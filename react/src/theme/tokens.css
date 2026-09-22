@@ -1,0 +1,969 @@
+﻿/* Design tokens â€” single source of truth.
+ * All values come from `design tokens/15 Apr v1/tokens/`.
+ * Two themes are exposed: light (default) and dark.
+ *
+ * Color system: shadcn Neutral + SaaS-reference.
+ *   â€¢ Neutrals are a 50â€“950 slate-leaning scale (shadcn Neutral).
+ *   â€¢ Primary is an indigo accent reserved for action, focus, and the
+ *     brand wordmark â€” it does NOT tint chrome or card surfaces.
+ *   â€¢ Semantics (success/warning/danger/info) follow the SaaS reference:
+ *     desaturated in light mode for readability against white surfaces,
+ *     more luminous but still accessible in dark mode.
+ *   â€¢ Syncfusion --sf-* CSS variables are bridged into the same tokens so
+ *     Syncfusion widgets and pure-React elements share one palette.
+ */
+
+:root,
+[data-theme='light'] {
+  /* Surfaces (shadcn Neutral, slate-leaning) */
+  --color-bg: #f8fafc;            /* slate-50 */
+  --color-surface: #ffffff;       /* white */
+  --color-surface-2: #f1f5f9;      /* slate-100 */
+  --color-surface-3: #e2e8f0;      /* slate-200 */
+  --color-overlay: rgba(15, 17, 21, 0.45);
+
+  /* Text (slate) */
+  --color-text: #0f172a;           /* slate-900 */
+  --color-text-muted: #475569;     /* slate-600 */
+  --color-text-subtle: #64748b;    /* slate-500 */
+  --color-text-inverse: #ffffff;
+  --color-text-on-primary: #ffffff;
+
+  /* Borders (slate) */
+  --color-border: #e2e8f0;         /* slate-200 */
+  --color-border-strong: #cbd5e1; /* slate-300 */
+
+  /* Brand / primary (indigo â€” action only) */
+  --color-primary: #4f46e5;        /* indigo-600 */
+  --color-primary-hover: #4338ca;  /* indigo-700 */
+  --color-primary-soft: #eef2ff;   /* indigo-50 */
+  --color-primary-text: #ffffff;
+
+  /* Status (SaaS reference, desaturated for white surfaces) */
+  --color-success: #15803d;        /* green-700 */
+  --color-warning: #d97706;        /* amber-600 — more yellow-leaning than amber-700 */
+  --color-danger: #b91c1c;         /* red-700 */
+  --color-info: #1d4ed8;           /* blue-700 */
+
+  /* Soft status fills (light-red, light-amber, etc.) â€” used for
+   *  alert surfaces that need a soft semantic tint with strong text. */
+  --color-danger-soft: #fee2e2;    /* red-100 â€” light red surface */
+  --color-danger-soft-border: #fecaca; /* red-200 */
+
+  /* Focus ring */
+  --color-focus-ring: #6366f1;     /* indigo-500 */
+
+  /* Spacing scale (4px base) */
+  --space-2xs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* Typography */
+  --font-family-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto,
+    sans-serif;
+  --font-family-mono: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+  --font-size-3xl: 32px;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Borders / shadows */
+  --border-width-1: 1px;
+  --border-width-2: 2px;
+  --shadow-sm: 0 1px 2px rgba(15, 17, 21, 0.05);
+  --shadow-md: 0 4px 8px rgba(15, 17, 21, 0.08);
+  --shadow-lg: 0 12px 24px rgba(15, 17, 21, 0.12);
+
+  /* Layout */
+  --sidebar-width: 248px;
+  --sidebar-dock-width: 60px;
+  --sidebar-content-gap: var(--space-xl);
+  --sidebar-transition-duration: 250ms;
+  --topbar-height: 56px;
+
+  /* Syncfusion bridge â€” light theme values (existing) */
+  --sf-bg: var(--color-surface);
+  --sf-text: var(--color-text);
+  --sf-text-muted: var(--color-text-muted);
+  --sf-border: var(--color-border);
+  --sf-primary: var(--color-primary);
+  --sf-primary-text: var(--color-primary-text);
+  --sf-hover-bg: var(--color-surface-2);
+  --sf-active-bg: var(--color-primary-soft);
+  --sf-overlay: var(--color-overlay);
+  --sf-focus-ring: var(--color-focus-ring);
+
+  /* Syncfusion bridge â€” DropDownButton / DropDownList / MultiSelect popup */
+  --sf-dropdown-popup-bg: var(--color-surface);
+  --sf-dropdown-popup-text: var(--color-text);
+  --sf-dropdown-popup-border: var(--color-border);
+  --sf-dropdown-popup-shadow: var(--shadow-lg);
+  --sf-dropdown-item-hover: var(--color-surface-2);
+  --sf-dropdown-item-active: var(--color-primary-soft);
+  --sf-dropdown-item-active-text: var(--color-primary);
+
+  /* Syncfusion bridge â€” Dialog */
+  --sf-dialog-overlay: var(--color-overlay);
+  --sf-dialog-bg: var(--color-surface);
+  --sf-dialog-text: var(--color-text);
+  --sf-dialog-border: var(--color-border);
+  --sf-dialog-header-bg: var(--color-surface);
+  --sf-dialog-header-text: var(--color-text);
+  --sf-dialog-footer-bg: var(--color-surface-2);
+  --sf-dialog-radius: var(--radius-lg);
+  --sf-dialog-shadow: var(--shadow-lg);
+
+  /* Syncfusion bridge â€” Toast (snackbar).
+   * Modern soft-tinted snackbar:
+   *  - the body is a light neutral surface
+   *  - each severity tints a thin left accent bar + a small icon
+   *    badge, so the severity is obvious at a glance without
+   *    flooding the whole panel with a saturated colour.
+   *  - title is strong, body is muted, close is a subtle ghost icon. */
+  --sf-toast-bg: var(--color-surface);
+  --sf-toast-text: var(--color-text);
+  --sf-toast-text-muted: var(--color-text-muted);
+  --sf-toast-border: var(--color-border);
+  --sf-toast-radius: var(--radius-lg);
+  --sf-toast-shadow: 0 12px 32px rgba(15, 23, 42, 0.14),
+    0 2px 6px rgba(15, 23, 42, 0.08);
+
+  /* Severity palette â€” `bg` is the soft tinted surface (light),
+   *  `accent` is the saturated stripe + icon background,
+   *  `icon` is the icon foreground (white over the accent),
+   *  `title` is the text colour for the title row. */
+  --sf-toast-success-bg: #ecfdf5;          /* green-50 */
+  --sf-toast-success-border: #a7f3d0;     /* green-200 */
+  --sf-toast-success-accent: var(--color-success);
+  --sf-toast-success-icon: #ffffff;
+  --sf-toast-success-title: #065f46;      /* green-800 */
+
+  --sf-toast-info-bg: #eff6ff;            /* blue-50 */
+  --sf-toast-info-border: #bfdbfe;        /* blue-200 */
+  --sf-toast-info-accent: var(--color-info);
+  --sf-toast-info-icon: #ffffff;
+  --sf-toast-info-title: #1e3a8a;         /* blue-900 */
+
+  --sf-toast-warning-bg: #fffbeb;         /* amber-50 */
+  --sf-toast-warning-border: #fde68a;     /* amber-200 */
+  --sf-toast-warning-accent: var(--color-warning);
+  --sf-toast-warning-icon: #ffffff;
+  --sf-toast-warning-title: #92400e;      /* amber-800 */
+
+  --sf-toast-error-bg: var(--color-danger-soft);
+  --sf-toast-error-border: var(--color-danger-soft-border);
+  --sf-toast-error-accent: var(--color-danger);
+  --sf-toast-error-icon: #ffffff;
+  --sf-toast-error-title: #7f1d1d;        /* red-800 */
+}
+
+[data-theme='dark'] {
+  /* Surfaces (slate, raised, low chroma) */
+  --color-bg: #020617;            /* slate-950 */
+  --color-surface: #0f172a;       /* slate-900 */
+  --color-surface-2: #1e293b;     /* slate-800 */
+  --color-surface-3: #334155;     /* slate-700 */
+  --color-overlay: rgba(0, 0, 0, 0.6);
+
+  /* Text (slate) */
+  --color-text: #f8fafc;           /* slate-50 */
+  --color-text-muted: #94a3b8;     /* slate-400 */
+  --color-text-subtle: #64748b;    /* slate-500 */
+  --color-text-inverse: #020617;
+  --color-text-on-primary: #020617; /* slate-950 â€” semantic fills carry dark text */
+
+  /* Borders (slate) */
+  --color-border: #1e293b;         /* slate-800 */
+  --color-border-strong: #334155; /* slate-700 */
+
+  /* Brand / primary (indigo, more luminous in dark) */
+  --color-primary: #818cf8;        /* indigo-400 */
+  --color-primary-hover: #a5b4fc;  /* indigo-300 */
+  --color-primary-soft: #1e1b4b;   /* indigo-950 */
+  --color-primary-text: #0f172a;   /* slate-900 â€” text on primary fills */
+
+  /* Status (SaaS reference, luminous but accessible) */
+  --color-success: #22c55e;        /* green-500 */
+  --color-warning: #f59e0b;        /* amber-500 */
+  --color-danger: #ef4444;         /* red-500 */
+  --color-info: #3b82f6;           /* blue-500 */
+
+  /* Soft status fills for dark mode (light red surface, still readable) */
+  --color-danger-soft: #3f1d1d;    /* red-950-ish â€” soft red surface in dark */
+  --color-danger-soft-border: #7f1d1d; /* red-900 */
+
+  /* Focus ring */
+  --color-focus-ring: #a5b4fc;     /* indigo-300 */
+
+  /* Shadows (deeper in dark) */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.6);
+
+  /* Syncfusion bridge â€” dark theme values (existing) */
+  --sf-bg: var(--color-surface);
+  --sf-text: var(--color-text);
+  --sf-text-muted: var(--color-text-muted);
+  --sf-border: var(--color-border);
+  --sf-primary: var(--color-primary);
+  --sf-primary-text: var(--color-primary-text);
+  --sf-hover-bg: var(--color-surface-2);
+  --sf-active-bg: var(--color-primary-soft);
+  --sf-overlay: var(--color-overlay);
+  --sf-focus-ring: var(--color-focus-ring);
+
+  /* Syncfusion bridge â€” DropDownButton / DropDownList / MultiSelect popup */
+  --sf-dropdown-popup-bg: var(--color-surface);
+  --sf-dropdown-popup-text: var(--color-text);
+  --sf-dropdown-popup-border: var(--color-border);
+  --sf-dropdown-popup-shadow: var(--shadow-lg);
+  --sf-dropdown-item-hover: var(--color-surface-2);
+  --sf-dropdown-item-active: var(--color-primary-soft);
+  --sf-dropdown-item-active-text: var(--color-primary);
+
+  /* Syncfusion bridge â€” Dialog */
+  --sf-dialog-overlay: var(--color-overlay);
+  --sf-dialog-bg: var(--color-surface);
+  --sf-dialog-text: var(--color-text);
+  --sf-dialog-border: var(--color-border);
+  --sf-dialog-header-bg: var(--color-surface);
+  --sf-dialog-header-text: var(--color-text);
+  --sf-dialog-footer-bg: var(--color-surface-2);
+  --sf-dialog-radius: var(--radius-lg);
+  --sf-dialog-shadow: var(--shadow-lg);
+
+  /* Syncfusion bridge â€” Toast (snackbar) â€” dark variants.
+   *  In dark mode the soft tinted surface is a low-chroma dark tint
+   *  of the accent, the icon badge keeps its saturated colour so the
+   *  severity still pops, and the title is light. */
+  --sf-toast-bg: var(--color-surface);
+  --sf-toast-text: var(--color-text);
+  --sf-toast-text-muted: var(--color-text-muted);
+  --sf-toast-border: var(--color-border);
+  --sf-toast-radius: var(--radius-lg);
+  --sf-toast-shadow: 0 12px 32px rgba(0, 0, 0, 0.6),
+    0 2px 6px rgba(0, 0, 0, 0.4);
+
+  --sf-toast-success-bg: rgba(34, 197, 94, 0.12);
+  --sf-toast-success-border: rgba(34, 197, 94, 0.3);
+  --sf-toast-success-accent: var(--color-success);
+  --sf-toast-success-icon: #052e16;
+  --sf-toast-success-title: #86efac;       /* green-300 */
+
+  --sf-toast-info-bg: rgba(59, 130, 246, 0.12);
+  --sf-toast-info-border: rgba(59, 130, 246, 0.3);
+  --sf-toast-info-accent: var(--color-info);
+  --sf-toast-info-icon: #0c1f3f;
+  --sf-toast-info-title: #93c5fd;          /* blue-300 */
+
+  --sf-toast-warning-bg: rgba(245, 158, 11, 0.12);
+  --sf-toast-warning-border: rgba(245, 158, 11, 0.3);
+  --sf-toast-warning-accent: var(--color-warning);
+  --sf-toast-warning-icon: #1f1300;
+  --sf-toast-warning-title: #fcd34d;       /* amber-300 */
+
+  --sf-toast-error-bg: rgba(239, 68, 68, 0.12);
+  --sf-toast-error-border: rgba(239, 68, 68, 0.3);
+  --sf-toast-error-accent: var(--color-danger);
+  --sf-toast-error-icon: #2a0707;
+  --sf-toast-error-title: #fca5a5;         /* red-300 */
+  /* KPI tiles (Overview tab) — dark-mode wash overrides.
+   * The card's radial wash sits at the top-left behind the title/value.
+   * In light mode it uses the tone's `-soft` pastel, but those pastels
+   * become a glaring white glow in dark mode and obscure the title.
+   * Swap to low-alpha tints of the hue on the dark surface so the
+   * gradient reads as a subtle glow instead of a hard white blob. */
+  --kpi-wash-success: color-mix(in srgb, var(--color-success) 12%, var(--color-surface));
+  --kpi-wash-success-2: color-mix(in srgb, var(--color-success) 5%, var(--color-surface));
+  --kpi-wash-danger: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface));
+  --kpi-wash-danger-2: color-mix(in srgb, var(--color-danger) 5%, var(--color-surface));
+  --kpi-wash-warning: color-mix(in srgb, var(--color-warning) 12%, var(--color-surface));
+  --kpi-wash-warning-2: color-mix(in srgb, var(--color-warning) 5%, var(--color-surface));
+  --kpi-wash-info: color-mix(in srgb, var(--color-info) 12%, var(--color-surface));
+  --kpi-wash-info-2: color-mix(in srgb, var(--color-info) 5%, var(--color-surface));
+  --kpi-wash-primary: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
+  --kpi-wash-primary-2: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
+}
+
+/* KPI tiles — override the light-theme pastel wash in dark mode.
+ * Scoped here (unlayered) so it wins against the unlayered overview.css
+ * per-tone rules while still following the theme. */
+[data-theme='dark'] .kpi-tile.e-card.kpi-tile--success {
+  --kpi-tile-wash-1: var(--kpi-wash-success) !important;
+  --kpi-tile-wash-2: var(--kpi-wash-success-2) !important;
+}
+
+[data-theme='dark'] .kpi-tile.e-card.kpi-tile--danger {
+  --kpi-tile-wash-1: var(--kpi-wash-danger) !important;
+  --kpi-tile-wash-2: var(--kpi-wash-danger-2) !important;
+}
+
+[data-theme='dark'] .kpi-tile.e-card.kpi-tile--warning {
+  --kpi-tile-wash-1: var(--kpi-wash-warning) !important;
+  --kpi-tile-wash-2: var(--kpi-wash-warning-2) !important;
+}
+
+[data-theme='dark'] .kpi-tile.e-card.kpi-tile--info {
+  --kpi-tile-wash-1: var(--kpi-wash-info) !important;
+  --kpi-tile-wash-2: var(--kpi-wash-info-2) !important;
+}
+
+[data-theme='dark'] .kpi-tile.e-card.kpi-tile--neutral {
+  --kpi-tile-wash-1: var(--kpi-wash-primary) !important;
+  --kpi-tile-wash-2: var(--kpi-wash-primary-2) !important;}
+
+/* Syncfusion widget overrides â€” bridged into tokens.
+ * Placed inside Tailwind's @layer base so it wins over utility classes
+ * and cascades with the rest of the design system.
+ */
+@layer base {
+  /* Syncfusion Sidebar (off-canvas drawer) */
+  .e-sidebar {
+    background-color: var(--sf-bg) !important;
+    color: var(--sf-text) !important;
+    border-color: var(--sf-border) !important;
+  }
+
+  .e-sidebar .e-sidebar-content {
+    background-color: var(--sf-bg) !important;
+    color: var(--sf-text) !important;
+  }
+
+  /* Syncfusion Switch */
+  .e-switch-wrapper {
+    --switch-on-bg: var(--color-primary);
+    --switch-off-bg: var(--color-surface-3);
+    --switch-knob-bg: var(--color-surface);
+  }
+
+  /* Syncfusion buttons used in shell (e-control / .e-btn) */
+  .e-btn,
+  button.e-control.e-btn {
+    background-color: var(--sf-bg) !important;
+    color: var(--sf-text) !important;
+    border-color: var(--sf-border) !important;
+  }
+
+  .e-btn:hover,
+  button.e-control.e-btn:hover {
+    background-color: var(--sf-hover-bg) !important;
+  }
+
+  /* Destructive primary button (used by the bulk-escalate dialog).
+   * Stacks on top of the default .e-btn / .e-primary rules. */
+  .e-btn.e-danger {
+    background-color: var(--color-danger) !important;
+    color: var(--color-text-on-primary) !important;
+    border-color: var(--color-danger) !important;
+  }
+  .e-btn.e-danger:hover {
+    background-color: var(--color-danger) !important;
+    filter: brightness(0.95);
+  }
+  /* Primary action button â€” restore the brand primary fill that the
+   *  generic .e-btn rule above neutralises. Without this rule, a
+   *  <ButtonComponent cssClass="e-primary"> renders with the same
+   *  neutral surface as every other button. */
+  .e-btn.e-primary {
+    background-color: var(--color-primary) !important;
+    color: var(--color-text-on-primary) !important;
+    border-color: var(--color-primary) !important;
+  }
+  .e-btn.e-primary:hover {
+    background-color: var(--color-primary-hover) !important;
+    border-color: var(--color-primary-hover) !important;
+  }
+
+  /* Focus ring across all interactive Syncfusion controls */
+  .e-control:focus,
+  .e-btn:focus {
+    outline: 2px solid var(--sf-focus-ring) !important;
+    outline-offset: 2px;
+  }
+
+  /* Syncfusion Chip / Badge â€” base defaults (mild tonal styles are
+   * defined UNLAYERED at the end of this file, since the Syncfusion
+   * CDN stylesheet is unlayered and beats any @layer rule at equal
+   * or higher specificity, even with !important. See
+   * `html body .e-chip.e-*` rules at the end of this file.) */
+  .e-chip,
+  .e-badge {
+    background-color: var(--sf-bg) !important;
+    color: var(--sf-text) !important;
+    border-color: var(--sf-border) !important;
+  }
+
+  /* Syncfusion Chart / Sparkline chrome */
+  .e-chart,
+  .e-sparkline {
+    background-color: transparent !important;
+  }
+  /* Sparkline host sizing â€” the React wrapper renders the .e-sparkline
+   * host div with no CSS height, so the SVG canvas collapses to 0px and
+   * the line is never drawn. Force the host to fill its wrapper so the
+   * widget has a non-zero box to render the line into. The wrapper
+   * (e.g. `<div class="w-full h-9">`) owns the actual pixel height. */
+  .e-sparkline {
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+  .e-chart .e-chart-title,
+  .e-chart .e-axes-title {
+    fill: var(--color-text) !important;
+  }
+  .e-chart text,
+  .e-sparkline text {
+    fill: var(--color-text-muted) !important;
+  }
+  .e-chart .e-axis-line,
+  .e-chart .e-axis-tick,
+  .e-chart .e-gridline {
+    stroke: var(--color-border) !important;
+  }
+  .e-chart .e-legend,
+  .e-chart .e-legend text {
+    fill: var(--color-text-muted) !important;
+  }
+  .e-chart .e-tooltip {
+    background-color: var(--color-surface) !important;
+    color: var(--color-text) !important;
+    border-color: var(--color-border) !important;
+  }
+
+  /* Syncfusion AccumulationChart (donut) */
+  .e-accumulationchart {
+    background-color: transparent !important;
+  }
+  .e-accumulationchart .e-tooltip {
+    background-color: var(--color-surface) !important;
+    color: var(--color-text) !important;
+    border-color: var(--color-border) !important;
+  }
+
+  /* Syncfusion Grid */
+  .e-grid {
+    background-color: var(--color-surface) !important;
+    color: var(--color-text) !important;
+    border-color: var(--color-border) !important;
+  }
+  .e-grid .e-headercell,
+  .e-grid .e-headercontent,
+  .e-grid .e-columnheader {
+    background-color: var(--color-surface-2) !important;
+    color: var(--color-text-subtle) !important;
+    border-color: var(--color-border) !important;
+  }
+  .e-grid .e-row,
+  .e-grid .e-rowcell {
+    background-color: var(--color-surface) !important;
+    color: var(--color-text) !important;
+    border-color: var(--color-border) !important;
+  }
+  .e-grid .e-row:hover,
+  .e-grid .e-rowcell:hover {
+    background-color: var(--color-surface-2) !important;
+  }
+  .e-grid .e-pager,
+  .e-grid .e-gridpager,
+  .e-grid .e-pagercontainer {
+    background-color: var(--color-surface-2) !important;
+    color: var(--color-text-muted) !important;
+    border-color: var(--color-border) !important;
+  }
+
+  /* Syncfusion ProgressBar */
+  .e-progress,
+  .e-progressbar {
+    background-color: var(--color-surface-2) !important;
+  }
+  .e-progress .e-progress-bar,
+  .e-progressbar .e-progress-bar {
+    background-color: var(--color-primary) !important;
+  }
+  .e-progress .e-progress-bar.e-success,
+  .e-progressbar .e-progress-bar.e-success,
+  .e-progress .e-progress-bar.e-bg-success,
+  .e-progressbar .e-progress-bar.e-bg-success {
+    background-color: var(--color-success) !important;
+  }
+  .e-progress .e-progress-bar.e-warning,
+  .e-progressbar .e-progress-bar.e-warning,
+  .e-progress .e-progress-bar.e-bg-warning,
+  .e-progressbar .e-progress-bar.e-bg-warning {
+    background-color: var(--color-warning) !important;
+  }
+  .e-progress .e-progress-bar.e-danger,
+  .e-progressbar .e-progress-bar.e-danger,
+  .e-progress .e-progress-bar.e-error,
+  .e-progressbar .e-progress-bar.e-error,
+  .e-progress .e-progress-bar.e-bg-danger,
+  .e-progressbar .e-progress-bar.e-bg-danger {
+    background-color: var(--color-danger) !important;
+  }
+
+  /* Syncfusion Message */
+  .e-message,
+  .e-alert {
+    background-color: var(--color-surface-2) !important;
+    color: var(--color-text) !important;
+    border-color: var(--color-border) !important;
+  }
+  .e-message.e-error,
+  .e-message.e-danger,
+  .e-alert.e-error,
+  .e-alert.e-danger {
+    background-color: var(--color-danger) !important;
+    color: var(--color-text-on-primary) !important;
+    border-color: var(--color-danger) !important;
+  }
+  /* Light-red variant â€” soft danger surface, strong danger text/border.
+   *  Use for in-page alerts that need to signal urgency without a
+   *  full-bleed red block. */
+  .e-message.e-error-light,
+  .e-alert.e-error-light,
+  .breach-alert-light .e-message,
+  .breach-alert-light .e-alert {
+    background-color: var(--color-danger-soft) !important;
+    color: var(--color-danger) !important;
+    border-color: var(--color-danger-soft-border) !important;
+  }
+  .e-message.e-error-light *,
+  .e-alert.e-error-light *,
+  .breach-alert-light .e-message *,
+  .breach-alert-light .e-alert * {
+    /* Inner text inherits the danger color so titles, copy, and
+     *  nested elements all stay readable on the soft surface. */
+    color: var(--color-danger) !important;
+  }
+  .e-message.e-error-light .bg-danger,
+  .e-alert.e-error-light .bg-danger,
+  .breach-alert-light .e-message .bg-danger,
+  .breach-alert-light .e-alert .bg-danger {
+    /* Keep the icon badge on the solid danger fill so the icon stays
+     *  white-on-red for accessibility. */
+    color: var(--color-text-on-primary) !important;
+  }
+  /* Hide the close icon on the in-page breach alert. The component
+   *  prop showCloseIcon={false} is set, but we also force-hide the
+   *  element defensively so the right-aligned button group is the
+   *  only action surface. Syncfusion renders the close button with
+   *  the .e-msg-close-icon class on a <span> inside .e-message. */
+  .breach-alert-light .e-message .e-msg-close-icon,
+  .breach-alert-light .e-alert .e-msg-close-icon,
+  .breach-alert-light .e-message [class*="e-msg-close"],
+  .breach-alert-light .e-alert [class*="e-msg-close"] {
+    display: none !important;
+  }
+  /* The Syncfusion `.e-msg-content` defaults to `display: block` and
+   *  shrinks to its content width. For the in-page breach alert we
+   *  need the body to fill the full alert width so the right-aligned
+   *  button group sits flush against the right edge. Force the
+   *  content area to expand inside the breach-alert-light scope. */
+  .breach-alert-light .e-msg-content,
+  .breach-alert-light .e-message .e-msg-content {
+    display: block !important;
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+  /* The React `MessageComponent` wraps the body in a plain <div>
+   *  (no class) that we want to fill too. The `cssClass` prop appends
+   *  the `breach-alert-body` class to that wrapper on subsequent
+   *  renders; the EJ2 widget on first mount also lands the class on
+   *  the same element via getDefaultAttributes. */
+  .breach-alert-light .breach-alert-body {
+    display: block !important;
+    flex: 1 1 auto !important;
+    width: 100% !important;
+  }
+
+  /* ---- New: DropDownButton / DropDownList / MultiSelect popup ---- */
+  .e-dropdown-popup,
+  .e-dropdownbase,
+  .e-ddl,
+  .e-multiselect {
+    background-color: var(--sf-dropdown-popup-bg) !important;
+    color: var(--sf-dropdown-popup-text) !important;
+    border-color: var(--sf-dropdown-popup-border) !important;
+  }
+  .e-dropdown-popup .e-list-item,
+  .e-dropdownbase .e-list-item,
+  .e-ddl .e-list-item {
+    background-color: var(--sf-dropdown-popup-bg) !important;
+    color: var(--sf-dropdown-popup-text) !important;
+    border-color: transparent !important;
+    white-space: nowrap !important;
+    word-break: normal !important;
+  }
+
+  /* ---- New: Toolbar filter alignment ----
+   * Keep the date-range DropDownButton label on a single line and let
+   * the surrounding toolbar wrap to a new row when there isn't enough
+   * horizontal space, instead of squeezing the button into a wrap.
+   */
+  .e-date-range-btn .e-btn-text,
+  .e-date-range-btn .e-btn-icon {
+    white-space: nowrap !important;
+  }
+  .e-date-range-btn {
+    min-width: 11rem !important;
+    max-width: 16rem !important;
+  }
+  .e-date-range-btn .e-btn-text {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+  .e-dropdown-popup .e-list-item.e-hover,
+  .e-dropdownbase .e-list-item.e-hover,
+  .e-ddl .e-list-item.e-hover,
+  .e-dropdown-popup .e-list-item:focus,
+  .e-dropdownbase .e-list-item:focus {
+    background-color: var(--sf-dropdown-item-hover) !important;
+    color: var(--sf-dropdown-popup-text) !important;
+  }
+  .e-dropdown-popup .e-list-item.e-active,
+  .e-dropdownbase .e-list-item.e-active,
+  .e-ddl .e-list-item.e-active {
+    background-color: var(--sf-dropdown-item-active) !important;
+    color: var(--sf-dropdown-item-active-text) !important;
+  }
+
+  /* ---- New: Syncfusion Dialog ---- */
+  .e-dlg-overlay {
+    background-color: var(--sf-dialog-overlay) !important;
+    opacity: 1 !important;
+  }
+  .e-dialog,
+  .e-dlg-container .e-dlg,
+  .e-dlg-container .e-dlg-content {
+    background-color: var(--sf-dialog-bg) !important;
+    color: var(--sf-dialog-text) !important;
+    border-color: var(--sf-dialog-border) !important;
+    border-radius: var(--sf-dialog-radius) !important;
+    box-shadow: var(--sf-dialog-shadow) !important;
+  }
+  .e-dlg-header,
+  .e-dlg-header-content {
+    background-color: var(--sf-dialog-header-bg) !important;
+    color: var(--sf-dialog-header-text) !important;
+    border-bottom: 1px solid var(--sf-dialog-border) !important;
+  }
+  .e-dlg-content {
+    background-color: var(--sf-dialog-bg) !important;
+    color: var(--sf-dialog-text) !important;
+  }
+  .e-dlg-footer,
+  .e-footer-content {
+    background-color: var(--sf-dialog-footer-bg) !important;
+    color: var(--sf-dialog-text) !important;
+    border-top: 1px solid var(--sf-dialog-border) !important;
+  }
+
+  /* ---- Syncfusion Toast (snackbar) ----
+   * Layout target (built by the Syncfusion widget):
+   *   .e-toast-container
+   *     .e-toast.e-toast-{severity}
+   *       .e-toast-icon           â† severity glyph (e-icons font)
+   *       .e-toast-message
+   *         .e-toast-title
+   *         .e-toast-content
+   *       .e-toast-close-icon
+   *       .e-toast-progress
+   *
+   * Each toast gets a soft-tinted surface + a coloured 4 px left
+   * accent stripe + a circular coloured icon badge. The title is
+   * bold + severity-coloured, the body is muted neutral text, and
+   * the close affordance is a subtle ghost icon.
+   *
+   * Specificity note: the unlayered CDN rule
+   *   .e-toast-container .e-toast.e-toast-success { ... }
+   * has higher specificity than ours (one extra descendant), so we
+   * bump our selectors to the same depth (`.e-toast-container
+   * .e-toast.e-toast-success`) AND add `!important`. The accent
+   * stripe and icon badge use `::before` / a wrapper class â€” those
+   * selectors don't exist in the CDN so they win cleanly. */
+  .e-toast-container {
+    z-index: 1000;
+  }
+
+  /* Base toast: surface, radius, shadow, padding, layout.
+   *  `position: relative` so the absolute accent stripe + progress
+   *  bar are positioned against this box. */
+  .e-toast-container .e-toast {
+    position: relative !important;
+    background-color: var(--sf-toast-bg) !important;
+    color: var(--sf-toast-text) !important;
+    border: 1px solid var(--sf-toast-border) !important;
+    border-radius: var(--sf-toast-radius) !important;
+    box-shadow: var(--sf-toast-shadow) !important;
+    padding: 14px 16px 16px 22px !important; /* extra left for the stripe */
+    min-width: 320px;
+    max-width: 420px;
+    gap: 12px;
+    transition: transform 160ms ease, box-shadow 160ms ease;
+  }
+  .e-toast-container .e-toast:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18),
+      0 4px 10px rgba(15, 23, 42, 0.1) !important;
+  }
+
+  /* Accent stripe â€” 4 px vertical bar on the left edge.
+   *  Pseudo-element so it doesn't fight any Syncfusion child node. */
+  .e-toast-container .e-toast::before {
+    content: '' !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    width: 4px !important;
+    border-top-left-radius: var(--sf-toast-radius) !important;
+    border-bottom-left-radius: var(--sf-toast-radius) !important;
+    background-color: var(--sf-toast-border) !important;
+  }
+  .e-toast-container .e-toast.e-toast-success::before {
+    background-color: var(--sf-toast-success-accent) !important;
+  }
+  .e-toast-container .e-toast.e-toast-info::before {
+    background-color: var(--sf-toast-info-accent) !important;
+  }
+  .e-toast-container .e-toast.e-toast-warning::before {
+    background-color: var(--sf-toast-warning-accent) !important;
+  }
+  .e-toast-container .e-toast.e-toast-danger::before,
+  .e-toast-container .e-toast.e-toast-error::before {
+    background-color: var(--sf-toast-error-accent) !important;
+  }
+
+  /* Severity tints â€” only the surface + border + per-severity text
+   *  tokens. The icon-badge background is set on `.e-toast-icon`
+   *  further down so we can round + pad it independently. */
+  .e-toast-container .e-toast.e-toast-success {
+    background-color: var(--sf-toast-success-bg) !important;
+    border-color: var(--sf-toast-success-border) !important;
+  }
+  .e-toast-container .e-toast.e-toast-info {
+    background-color: var(--sf-toast-info-bg) !important;
+    border-color: var(--sf-toast-info-border) !important;
+  }
+  .e-toast-container .e-toast.e-toast-warning {
+    background-color: var(--sf-toast-warning-bg) !important;
+    border-color: var(--sf-toast-warning-border) !important;
+  }
+  .e-toast-container .e-toast.e-toast-danger,
+  .e-toast-container .e-toast.e-toast-error {
+    background-color: var(--sf-toast-error-bg) !important;
+    border-color: var(--sf-toast-error-border) !important;
+  }
+
+  /* Icon badge â€” turn Syncfusion's bare 20 px severity icon into a
+   *  32 px circular coloured badge. The icon glyph is a
+   *  pseudo-element on a child span; we wrap it by giving the
+   *  parent a coloured background + radius + flex centering.
+   *  The `::before` content (`.e-toast-success-icon::before { content: "\e72b" }`)
+   *  is rendered with `font-family: e-icons`; we shrink it and
+   *  recolour it so the glyph reads as a white tick on the badge. */
+  .e-toast-container .e-toast .e-toast-icon {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    min-height: 32px !important;
+    margin-right: 12px !important;
+    border-radius: 999px !important;
+    background-color: var(--sf-toast-border) !important;
+    color: var(--color-surface) !important;
+    font-size: 16px !important;
+    line-height: 1 !important;
+  }
+  .e-toast-container .e-toast.e-toast-success .e-toast-icon {
+    background-color: var(--sf-toast-success-accent) !important;
+    color: var(--sf-toast-success-icon) !important;
+  }
+  .e-toast-container .e-toast.e-toast-info .e-toast-icon {
+    background-color: var(--sf-toast-info-accent) !important;
+    color: var(--sf-toast-info-icon) !important;
+  }
+  .e-toast-container .e-toast.e-toast-warning .e-toast-icon {
+    background-color: var(--sf-toast-warning-accent) !important;
+    color: var(--sf-toast-warning-icon) !important;
+  }
+  .e-toast-container .e-toast.e-toast-danger .e-toast-icon,
+  .e-toast-container .e-toast.e-toast-error .e-toast-icon {
+    background-color: var(--sf-toast-error-accent) !important;
+    color: var(--sf-toast-error-icon) !important;
+  }
+  /* Shrink the actual e-icons glyph so it sits nicely in the badge. */
+  .e-toast-container .e-toast .e-toast-icon::before {
+    font-size: 16px !important;
+    line-height: 32px !important;
+  }
+
+  /* Title + body text */
+  .e-toast-container .e-toast .e-toast-message {
+    gap: 2px;
+  }
+  .e-toast-container .e-toast .e-toast-message .e-toast-title {
+    color: var(--sf-toast-text) !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0 !important;
+    line-height: 1.35 !important;
+    padding: 0 !important;
+  }
+  .e-toast-container .e-toast.e-toast-success .e-toast-message .e-toast-title {
+    color: var(--sf-toast-success-title) !important;
+  }
+  .e-toast-container .e-toast.e-toast-info .e-toast-message .e-toast-title {
+    color: var(--sf-toast-info-title) !important;
+  }
+  .e-toast-container .e-toast.e-toast-warning .e-toast-message .e-toast-title {
+    color: var(--sf-toast-warning-title) !important;
+  }
+  .e-toast-container .e-toast.e-toast-danger .e-toast-message .e-toast-title,
+  .e-toast-container .e-toast.e-toast-error .e-toast-message .e-toast-title {
+    color: var(--sf-toast-error-title) !important;
+  }
+
+  .e-toast-container .e-toast .e-toast-message .e-toast-content {
+    color: var(--sf-toast-text-muted) !important;
+    font-size: 13px !important;
+    line-height: 1.45 !important;
+    padding: 2px 0 0 !important;
+  }
+
+  /* Close button â€” subtle ghost icon, soft hover background. */
+  .e-toast-container .e-toast .e-toast-close-icon {
+    color: var(--sf-toast-text-muted) !important;
+    width: 24px !important;
+    height: 24px !important;
+    border-radius: 6px !important;
+    font-size: 14px !important;
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+  .e-toast-container .e-toast .e-toast-close-icon:hover,
+  .e-toast-container .e-toast .e-toast-close-icon:focus {
+    background-color: rgba(15, 23, 42, 0.08) !important;
+    color: var(--sf-toast-text) !important;
+  }
+  .e-toast-container .e-toast.e-toast-success .e-toast-close-icon:hover,
+  .e-toast-container .e-toast.e-toast-success .e-toast-close-icon:focus {
+    background-color: rgba(21, 128, 61, 0.12) !important;
+    color: var(--sf-toast-success-title) !important;
+  }
+  .e-toast-container .e-toast.e-toast-info .e-toast-close-icon:hover,
+  .e-toast-container .e-toast.e-toast-info .e-toast-close-icon:focus {
+    background-color: rgba(29, 78, 216, 0.12) !important;
+    color: var(--sf-toast-info-title) !important;
+  }
+  .e-toast-container .e-toast.e-toast-warning .e-toast-close-icon:hover,
+  .e-toast-container .e-toast.e-toast-warning .e-toast-close-icon:focus {
+    background-color: rgba(180, 83, 9, 0.12) !important;
+    color: var(--sf-toast-warning-title) !important;
+  }
+  .e-toast-container .e-toast.e-toast-danger .e-toast-close-icon:hover,
+  .e-toast-container .e-toast.e-toast-danger .e-toast-close-icon:focus,
+  .e-toast-container .e-toast.e-toast-error .e-toast-close-icon:hover,
+  .e-toast-container .e-toast.e-toast-error .e-toast-close-icon:focus {
+    background-color: rgba(185, 28, 28, 0.12) !important;
+    color: var(--sf-toast-error-title) !important;
+  }
+
+  /* Progress bar â€” make it 3 px, sit at the very bottom, and tint
+   *  it with the severity accent. The CDN default is a 4 px grey
+   *  bar; ours matches the rounded bottom corners of the toast. */
+  .e-toast-container .e-toast .e-toast-progress {
+    height: 3px !important;
+    background-color: rgba(15, 23, 42, 0.08) !important;
+    border-bottom-left-radius: var(--sf-toast-radius) !important;
+    border-bottom-right-radius: var(--sf-toast-radius) !important;
+  }
+  .e-toast-container .e-toast.e-toast-success .e-toast-progress {
+    background-color: var(--sf-toast-success-accent) !important;
+  }
+  .e-toast-container .e-toast.e-toast-info .e-toast-progress {
+    background-color: var(--sf-toast-info-accent) !important;
+  }
+  .e-toast-container .e-toast.e-toast-warning .e-toast-progress {
+    background-color: var(--sf-toast-warning-accent) !important;
+  }
+  .e-toast-container .e-toast.e-toast-danger .e-toast-progress,
+  .e-toast-container .e-toast.e-toast-error .e-toast-progress {
+    background-color: var(--sf-toast-error-accent) !important;
+  }
+}
+
+
+
+/* ------------------------------------------------------------------ *
+ *  Chip / Badge â€” mild tonal palette (UNLAYERED)
+ *
+ *  The Syncfusion CDN stylesheet at
+ *    https://cdn.syncfusion.com/ej2/28.2.7/tailwind3.css
+ *  is unlayered, so per the CSS cascade an unlayered rule at the
+ *  same selector depth always beats a `@layer base` rule, even
+ *  with !important. Placing the chip palette here â€” unlayered, at
+ *  the end of the file, with `html body` to raise specificity by
+ *  one tag â€” makes the mild tonal chips win consistently.
+ *
+ *  Visual style: soft pastel background + brand-color text, matching
+ *  the Cases-tab SLA chip screenshot (light red "Critical", light
+ *  amber "At risk", light green "On track", light blue "24Ã—7").
+ *  The CDN defaults are solid colour fills with white text, which
+ *  read as heavy and high-saturation against the shadcn-neutral
+ *  page chrome.
+ * ------------------------------------------------------------------ */
+html body .e-chip.e-success,
+html body .e-badge.e-success {
+  background-color: #dcfce7 !important;   /* green-100 â€” mild on-track */
+  color: var(--color-success) !important;
+  border-color: #bbf7d0 !important;      /* green-200 */
+}
+
+html body .e-chip.e-warning,
+html body .e-badge.e-warning {
+  background-color: #fef3c7 !important;   /* amber-100 â€” mild at-risk */
+  color: var(--color-warning) !important;
+  border-color: #fde68a !important;      /* amber-200 */
+}
+
+html body .e-chip.e-error,
+html body .e-chip.e-danger,
+html body .e-badge.e-error,
+html body .e-badge.e-danger {
+  background-color: var(--color-danger-soft) !important;  /* red-100 â€” mild critical */
+  color: var(--color-danger) !important;
+  border-color: var(--color-danger-soft-border) !important;
+}
+
+html body .e-chip.e-info,
+html body .e-badge.e-info {
+  background-color: #dbeafe !important;   /* blue-100 â€” mild 24Ã—7 */
+  color: var(--color-info) !important;
+  border-color: #bfdbfe !important;      /* blue-200 */
+}
+
+html body .e-chip.e-secondary,
+html body .e-badge.e-secondary {
+  background-color: var(--color-surface-2) !important;
+  color: var(--color-text-muted) !important;
+}

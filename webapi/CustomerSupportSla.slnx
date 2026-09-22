@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/CustomerSupportSla.Application/CustomerSupportSla.Application.csproj" />
+  <Project Path="src/CustomerSupportSla.Infrastructure/CustomerSupportSla.Infrastructure.csproj" />
+  <Project Path="src/CustomerSupportSla.Api/CustomerSupportSla.Api.csproj" />
+</Solution>
