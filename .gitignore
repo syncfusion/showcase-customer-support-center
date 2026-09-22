@@ -1,0 +1,25 @@
+.vscode/
+
+# Dependencies
+node_modules/
+react/dist/
+
+# Build outputs
+# .NET build outputs (matches bin/obj at any depth under webapi)
+webapi/**/bin/
+webapi/**/obj/
+webapi/.vs/
+
+# React static-server artefacts
+react/server.cjs is committed (production host reads it). Do not ignore it.
+
+# IDE / OS
+.vscode/
+.idea/
+*.user
+.DS_Store
+
+# Env
+.env
+.env.local
+.env.*.local

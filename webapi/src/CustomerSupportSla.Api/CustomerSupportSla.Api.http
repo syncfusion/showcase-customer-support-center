@@ -1,0 +1,19 @@
+@CustomerSupportSlaApi_HostAddress = http://localhost:5271
+
+GET {{CustomerSupportSlaApi_HostAddress}}/
+Accept: application/json
+
+###
+
+GET {{CustomerSupportSlaApi_HostAddress}}/api/overview/kpis?range=7d
+Accept: application/json
+
+###
+
+GET {{CustomerSupportSlaApi_HostAddress}}/api/queue/tickets?status=open&page=1&pageSize=10
+Accept: application/json
+
+###
+
+GET {{CustomerSupportSlaApi_HostAddress}}/api/cases/CS-10400
+Accept: application/json
