@@ -1,0 +1,954 @@
+/* ================================================================== *
+ *  Overview tab — Syncfusion widget overrides
+ *
+ *  Per-tab CSS for OverviewTab. Three things need re-painting to
+ *  match the surrounding cards:
+ *
+ *    1. Activity feed ListView (`.activity-feed-list`) — the
+ *       "Activity" card on the right rail, with its own scroller
+ *       wrapper (`.activity-feed-scroller`).
+ *    2. Workload ListView (`.workload-list`) — the "Agent
+ *       workload" card on the right rail, with its own scroller
+ *       wrapper (`.workload-scroller`).
+ *    3. At-risk grid SLA cell modifiers — the per-cell
+ *       wash/accent for the live-countdown SLA column on the
+ *       at-risk grid (`.sla-cell--breach`, `.sla-cell--risk`,
+ *       `.sla-cell--ok`, `.sla-live--pulse`, `.sla-live-digits`,
+ *       `.sla-live-footer`).
+ *
+ *  All rules are intentionally UNLAYERED (no `@layer base`) and
+ *  use the `html body` prefix to win the cascade against the
+ *  unlayered Syncfusion CDN / Tailwind3 theme stylesheet (see
+ *  repo memory "Layer cascade trap"). The `.breach-alert-light`
+ *  Message override that the Overview tab uses is shared with
+ *  other tabs, so it stays in `theme/tokens.css` next to the
+ *  other chip / message rules.
+ * ================================================================== */
+
+/* ------------------------------------------------------------------ *
+ *  Activity feed (Overview tab) — ListViewComponent overrides.
+ *
+ *  The Syncfusion ListView wraps every item in
+ *    <li class="e-list-item">
+ *      <span class="e-list-text">…our template…</span>
+ *    </li>
+ *  with two crucial built-in constraints on `.e-list-text`:
+ *    display: inline-block;
+ *    white-space: nowrap;
+ *  Without overriding those, any block-level template collapses to a
+ *  single line and `white-space:nowrap` stacks the two text rows on
+ *  top of each other (the symptom that prompted this fix).
+ *
+ *  We also kill the 40 px height, the per-item bottom border, and the
+ *  dropdown-popup colours so the feed reads as a flat, edge-to-edge
+ *  activity list. Padding and the dividing border are then supplied
+ *  by the template (`.activity-feed-item` class) so we control the
+ *  exact spacing and divider colour.
+ *
+ *  The unlayered `html body` prefix + `!important` is required to
+ *  beat the unlayered Syncfusion CDN stylesheet (see repo memory
+ *  "Layer cascade trap").
+ * ------------------------------------------------------------------ */
+
+.activity-feed-list.e-listview {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.activity-feed-list.e-listview .e-list-parent {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.activity-feed-list.e-listview .e-list-item {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  cursor: default !important;
+}
+
+.activity-feed-list.e-listview .e-list-item:hover,
+.activity-feed-list.e-listview .e-list-item.e-hover {
+  background: var(--sf-surface-2) !important;
+}
+
+/*
+ * Override the inline-block + nowrap on .e-list-text so the template
+ * can be a real block (flex row with a stacked title/sub block inside).
+ * Without this, .e-list-text collapses to a single line and the
+ * sub text wraps over the title.
+ */
+.activity-feed-list.e-listview .e-list-text {
+  display: block !important;
+  width: 100% !important;
+  white-space: normal !important;
+  padding: 0 !important;
+  font-weight: 400 !important;
+  text-overflow: clip !important;
+  overflow: visible !important;
+}
+
+/* Per-item layout: padding on every side + a 1 px divider under each
+ * item except the last. The divider uses --sf-border so it follows
+ * the active theme. */
+.activity-feed-list.e-listview .activity-feed-item {
+  display: block !important;
+  width: 100% !important;
+  padding: 12px 16px !important;
+  border-bottom: 1px solid var(--sf-border) !important;
+}
+
+.activity-feed-list.e-listview .e-list-item:last-child .activity-feed-item {
+  border-bottom: 0 !important;
+}
+
+/* Scrollable wrapper for the expanded "View all" activity list.
+ *
+ * The wrapper sits outside the ListViewComponent so the widget itself
+ * does not need to know about scroll containers — we just give the
+ * outer div a fixed height and `overflow-y: auto`, and the browser
+ * handles the rest (no virtualization). The wrapper also gets its
+ * own rounded bottom corners to match the card, and a thin
+ * theme-coloured scrollbar so the affordance is visible on light
+ * backgrounds. */
+.activity-feed-scroller {
+  max-height: 420px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  border-bottom-left-radius: 8px !important;
+  border-bottom-right-radius: 8px !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: var(--sf-border-strong) transparent !important;
+}
+
+.activity-feed-scroller::-webkit-scrollbar {
+  width: 8px !important;
+}
+
+.activity-feed-scroller::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.activity-feed-scroller::-webkit-scrollbar-thumb {
+  background: var(--sf-border-strong) !important;
+  border-radius: 4px !important;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Workload list (OverviewTab — Agent workload card)
+ *
+ *  Same unlayered `html body` + `!important` strategy used by
+ *  .activity-feed-list. We strip the Syncfusion-injected list chrome
+ *  (background, border, default .e-list-text nowrap) so the per-agent
+ *  template can be a real block: avatar + name stacked on the left, a
+ *  chunky progress bar underneath, and a mono count on the right.
+ *
+ *  A 1 px divider is added under every item except the last so the
+ *  rows read as a clean list even though the parent card already has
+ *  its own outer border.
+ * ------------------------------------------------------------------ */
+
+.workload-list.e-listview {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.workload-list.e-listview .e-list-parent {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.workload-list.e-listview .e-list-item {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  cursor: default !important;
+}
+
+/*
+ * Without this, .e-list-text collapses to inline-block + nowrap and
+ * the per-row grid (avatar/name on the left, count on the right)
+ * can't lay out. Let it be a real block and inherit the body text
+ * colour so the mono count is the same tone as the rest of the row.
+ */
+.workload-list.e-listview .e-list-text {
+  display: block !important;
+  width: 100% !important;
+  white-space: normal !important;
+  padding: 0 !important;
+  font-weight: 400 !important;
+  text-overflow: clip !important;
+  overflow: visible !important;
+  color: inherit !important;
+}
+
+.workload-list.e-listview .workload-row {
+  display: block !important;
+  width: 100% !important;
+  border-bottom: 1px solid var(--sf-border) !important;
+}
+
+.workload-list.e-listview .e-list-item:last-child .workload-row {
+  border-bottom: 0 !important;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Workload scroller (OverviewTab — Agent workload "View all")
+ *
+ *  Mirrors `.activity-feed-scroller` above. Slightly taller max-height
+ *  (480px) because each workload row is denser (avatar + name + tier
+ *  + 8px progress bar + count) than an activity row. Same unlayered
+ *  `html body` + `!important` strategy so the rule wins over the
+ *  layered tokens in `@layer base`.
+ *
+ *  The scroll handler is attached to the ListView in the expanded
+ *  view only — the collapsed view (5 items) never overflows, so
+ *  there's nothing to scroll and the `scroll` event never fires. */
+.workload-scroller {
+  max-height: 480px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  border-bottom-left-radius: 8px !important;
+  border-bottom-right-radius: 8px !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: var(--sf-border-strong) transparent !important;
+}
+
+.workload-scroller::-webkit-scrollbar {
+  width: 8px !important;
+}
+
+.workload-scroller::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.workload-scroller::-webkit-scrollbar-thumb {
+  background: var(--sf-border-strong) !important;
+  border-radius: 4px !important;
+}
+
+/* ------------------------------------------------------------------ *
+ *  At-risk grid — Live SLA column (OverviewTab)
+ *
+ *  Adds visual treatments for the live-countdown SLA cell:
+ *    • `.sla-live-digits`  — tabular-num font-variant so the
+ *      seconds tick without horizontal jitter.
+ *    • `.sla-cell--breach`  — soft red wash behind the cell,
+ *      applied via `queryCellInfo` on the at-risk grid.
+ *    • `.sla-cell--risk`    — soft amber wash.
+ *    • `.sla-cell--ok`      — left accent bar in success color.
+ *    • `.sla-live--pulse`   — 1.5s pulse loop on the dot icon
+ *      for any cell currently in breach.
+ *    • `.sla-live-footer`   — the live footer row beneath the
+ *      grid; rounded bottom corners so it sits flush with the
+ *      grid container.
+ *
+ *  These rules are unlayered (no `@layer base`) and use
+ *  `html body` to raise specificity, mirroring the strategy
+ *  used by `.activity-feed-scroller` and `.workload-scroller`
+ *  above. The CDN stylesheet is unlayered, so a layered
+ *  override would lose the cascade even with !important.
+ */
+.sla-live-digits {
+  font-variant-numeric: tabular-nums !important;
+  font-feature-settings: 'tnum' 1 !important;
+  letter-spacing: 0 !important;
+}
+
+@keyframes sla-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.9); }
+}
+
+.sla-live--pulse {
+  animation: sla-pulse 1.5s ease-in-out infinite !important;
+}
+
+.e-grid .sla-cell--breach {
+  background-color: var(--color-danger-soft) !important;
+  box-shadow: inset 3px 0 0 0 var(--color-danger) !important;
+}
+
+.e-grid .sla-cell--risk {
+  background-color: #fef3c7 !important; /* amber-100 */
+  box-shadow: inset 3px 0 0 0 var(--color-warning) !important;
+}
+
+.e-grid .sla-cell--ok {
+  box-shadow: inset 3px 0 0 0 var(--color-success) !important;
+}
+
+.sla-live-footer {
+  border-bottom-left-radius: 8px !important;
+  border-bottom-right-radius: 8px !important;
+}
+
+/* ------------------------------------------------------------------ *
+ *  KPI tile grid wrapper (OverviewTab — 4 stat cards row)
+ *
+ *  The wrapper itself is just a 1/2/4-column responsive grid with a
+ *  comfortable gap. We hand-roll the grid (rather than reusing
+ *  Tailwind's `grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4`) so
+ *  the spacing and breakpoints stay in one place next to the per-
+ *  tile rules below — and so a future customisation (e.g. a
+ *  3-up "1 + 3" hero layout) only has to edit this one selector.
+ *
+ *  `auto-rows: 1fr` is the key line: it forces every row's tiles to
+ *  share the same height, so the four KPI cards line up row-by-row
+ *  regardless of which tone is the tallest. Without it, the sparkline
+ *  area's intrinsic height can vary per card and the footer chip
+ *  baseline shifts from card to card. */
+.kpi-section {
+  display: grid !important;
+  grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+  gap: 20px !important;
+  align-items: stretch !important;
+  grid-auto-rows: 1fr !important;
+  width: 100% !important;
+}
+
+@media (min-width: 640px) {
+  .kpi-section {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .kpi-section {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ *  KPI tile — Syncfusion E-Card layered with dashboard chrome
+ *
+ *  Per the Syncfusion Tailwind3 Card / Basic demo
+ *  (https://ej2.syncfusion.com/react/demos/#/tailwind3/card/basic),
+ *  the e-card structure is:
+ *
+ *    .e-card                       — outer container (border, radius,
+ *                                    flex column, line-height: 36px)
+ *    .e-card-header                — top row (label + icon disc)
+ *    .e-card-content               — body (value + sparkline)
+ *    .e-card-actions               — footer (trend chip)
+ *
+ *  Syncfusion's CDN stylesheet provides the .e-card* base (rounded
+ *  corners, vertical flex, 1 px border, etc.). The `.kpi-tile` rules
+ *  below layer the *dashboard-specific* chrome on top:
+ *
+ *    1. A 4 px tone-tinted accent stripe at the top of every card,
+ *       so the four cards read as a tonal range (success → danger →
+ *       warning → neutral) even at a glance.
+ *    2. A subtle per-tone radial wash inside the card, behind the
+ *       value row, so the tone bleeds through the chrome rather than
+ *       sitting flat on white.
+ *    3. A flat-toned icon disc in the header (replaces the previous
+ *       chip-disc + Chip pair — cleaner, less cluttered, and the
+ *       tone still reads at a glance).
+ *    4. A fixed-height value wrap so the sparkline's top edge is
+ *       consistent across all four cards.
+ *    5. A full-bleed sparkline host that takes 100% of the card
+ *       content width (no horizontal jitter on resize).
+ *
+ *  All rules below are unlayered (no `@layer base`) and use the
+ *  `html body` prefix + `!important` to win the cascade against
+ *  the unlayered Syncfusion CDN stylesheet (see repo memory
+ *  "Layer cascade trap"). The CSS variables the rules reference
+ *  (`--color-{success,danger,warning,info,primary,surface,text,
+ *  border}`) are defined in `src/theme/tokens.css` so the chrome
+ *  follows the active theme.
+ * ------------------------------------------------------------------ */
+
+.kpi-tile.e-card {
+  /* Reset the line-height Syncfusion's .e-card applies (36px on the
+   * base class) so the value row can sit on its own rhythm without
+   * the 36px vertical stride showing through. */
+  line-height: 1.4 !important;
+  /* Stack the header / content / footer as a real column with no
+   * `justify-content: center` — Syncfusion's base centers every
+   * child vertically, which made the sparkline hover off-centre
+   * inside the content area. */
+  justify-content: flex-start !important;
+  /* Clip the top accent stripe to the card's rounded corners. The
+   * stripe is rendered by a `::before` pseudo on the article, so
+   * the card itself needs `overflow: hidden`. Syncfusion's base
+   * already sets `overflow: hidden`, but we re-declare it so a
+   * future override of the base class can't accidentally clip us
+   * out of the card. */
+  position: relative !important;
+  padding: 0 !important;
+  /* Two-stop tone-tinted gradient behind the value row. The first
+   * stop (top-left) is the strong wash that bleeds through the
+   * header; the second stop (mid) is a softer wash that fills the
+   * middle of the card. Both stops are pulled from the
+   * --kpi-tile-wash-* custom properties set on the parent by the
+   * .kpi-tile--{tone} modifier. The end-stop is fully transparent
+   * so the bottom of the card stays on the surface colour and the
+   * footer chip's tonal background stands out. */
+  background-image:
+    radial-gradient(
+      140% 90% at 0% 0%,
+      var(--kpi-tile-wash-1, transparent) 0%,
+      var(--kpi-tile-wash-2, transparent) 35%,
+      transparent 70%
+    ) !important;
+  background-color: var(--sf-surface) !important;
+  background-blend-mode: normal !important;
+  /* Slightly stronger border than Syncfusion's base 1px so the
+   * tonal wash doesn't blur the card edge. */
+  border: 1px solid var(--sf-border) !important;
+  border-radius: 14px !important;
+  /* The card chrome (header + content + separator + footer) is
+   * laid out as a column with a fixed minimum height. Setting an
+   * explicit `min-height` ensures the four tiles share a consistent
+   * height even when one card's label wraps to a second line. */
+  min-height: 196px !important;
+  transition: box-shadow 200ms ease, transform 200ms ease,
+    border-color 200ms ease !important;
+}
+
+.kpi-tile.e-card:hover {
+  box-shadow: 0 12px 28px -10px rgba(15, 23, 42, 0.18),
+    0 4px 10px -4px rgba(15, 23, 42, 0.08) !important;
+  transform: translateY(-2px) !important;
+  border-color: color-mix(in srgb, var(--kpi-tile-stripe, var(--color-primary)) 35%, var(--sf-border)) !important;
+}
+
+/* Top accent stripe — 4px tall, full-bleed, tone-tinted. The
+ * pseudo sits inside the card (rounded corners clip it) and
+ * sits *above* the gradient wash (rendered later in the
+ * stacking order). */
+.kpi-tile.e-card::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 4px !important;
+  background: var(--kpi-tile-stripe, var(--color-primary)) !important;
+  z-index: 1 !important;
+  pointer-events: none !important;
+}
+
+/* Per-tone accent colours. `--kpi-tile-stripe` and
+ * `--kpi-tile-wash` are the two custom properties the rules
+ * above consume; the modifier only sets them, so adding a new
+ * tone is a single new selector.
+ *
+ * Wash stops use the tone's `-soft` token (defined in
+ * tokens.css) at low alpha so the radial gradient bleeds
+ * through the chrome rather than sitting flat on the card.
+ * The same `-soft` palette is used by the breach-alert banner
+ * and the SLA cell washes, so the tonal vocabulary is
+ * consistent across the dashboard. */
+.kpi-tile.e-card.kpi-tile--success {
+  --kpi-tile-stripe: var(--color-success) !important;
+  --kpi-tile-wash-1: color-mix(in srgb, var(--color-success-soft, #dcfce7) 90%, transparent) !important;
+  --kpi-tile-wash-2: color-mix(in srgb, var(--color-success-soft, #dcfce7) 40%, transparent) !important;
+  --kpi-tile-wash: var(--kpi-tile-wash-1) !important;
+  --kpi-tile-disc-bg: linear-gradient(135deg, var(--color-success) 0%, color-mix(in srgb, var(--color-success) 65%, var(--color-surface)) 100%) !important;
+  --kpi-tile-disc-fg: #ffffff !important;
+  --kpi-tile-disc-shadow: color-mix(in srgb, var(--color-success) 35%, transparent) !important;
+  --kpi-tile-spark-grad-1: color-mix(in srgb, var(--color-success) 45%, transparent) !important;
+  --kpi-tile-spark-grad-2: color-mix(in srgb, var(--color-success) 5%, transparent) !important;
+}
+
+.kpi-tile.e-card.kpi-tile--danger {
+  --kpi-tile-stripe: var(--color-danger) !important;
+  --kpi-tile-wash-1: color-mix(in srgb, var(--color-danger-soft, #fee2e2) 90%, transparent) !important;
+  --kpi-tile-wash-2: color-mix(in srgb, var(--color-danger-soft, #fee2e2) 40%, transparent) !important;
+  --kpi-tile-wash: var(--kpi-tile-wash-1) !important;
+  --kpi-tile-disc-bg: linear-gradient(135deg, var(--color-danger) 0%, color-mix(in srgb, var(--color-danger) 65%, var(--color-surface)) 100%) !important;
+  --kpi-tile-disc-fg: #ffffff !important;
+  --kpi-tile-disc-shadow: color-mix(in srgb, var(--color-danger) 35%, transparent) !important;
+  --kpi-tile-spark-grad-1: color-mix(in srgb, var(--color-danger) 45%, transparent) !important;
+  --kpi-tile-spark-grad-2: color-mix(in srgb, var(--color-danger) 5%, transparent) !important;
+}
+
+.kpi-tile.e-card.kpi-tile--warning {
+  --kpi-tile-stripe: var(--color-warning) !important;
+  --kpi-tile-wash-1: rgba(254, 243, 199, 0.95) !important;
+  --kpi-tile-wash-2: rgba(254, 243, 199, 0.45) !important;
+  --kpi-tile-wash: var(--kpi-tile-wash-1) !important;
+  --kpi-tile-disc-bg: linear-gradient(135deg, var(--color-warning) 0%, color-mix(in srgb, var(--color-warning) 65%, var(--color-surface)) 100%) !important;
+  --kpi-tile-disc-fg: #ffffff !important;
+  --kpi-tile-disc-shadow: color-mix(in srgb, var(--color-warning) 35%, transparent) !important;
+  --kpi-tile-spark-grad-1: color-mix(in srgb, var(--color-warning) 50%, transparent) !important;
+  --kpi-tile-spark-grad-2: color-mix(in srgb, var(--color-warning) 5%, transparent) !important;
+}
+
+.kpi-tile.e-card.kpi-tile--info {
+  --kpi-tile-stripe: var(--color-info) !important;
+  --kpi-tile-wash-1: color-mix(in srgb, #dbeafe 90%, transparent) !important;
+  --kpi-tile-wash-2: color-mix(in srgb, #dbeafe 40%, transparent) !important;
+  --kpi-tile-wash: var(--kpi-tile-wash-1) !important;
+  --kpi-tile-disc-bg: linear-gradient(135deg, var(--color-info) 0%, color-mix(in srgb, var(--color-info) 65%, var(--color-surface)) 100%) !important;
+  --kpi-tile-disc-fg: #ffffff !important;
+  --kpi-tile-disc-shadow: color-mix(in srgb, var(--color-info) 35%, transparent) !important;
+  --kpi-tile-spark-grad-1: color-mix(in srgb, var(--color-info) 45%, transparent) !important;
+  --kpi-tile-spark-grad-2: color-mix(in srgb, var(--color-info) 5%, transparent) !important;
+}
+
+.kpi-tile.e-card.kpi-tile--neutral {
+  --kpi-tile-stripe: var(--color-primary) !important;
+  --kpi-tile-wash-1: color-mix(in srgb, var(--color-primary-soft) 60%, transparent) !important;
+  --kpi-tile-wash-2: color-mix(in srgb, var(--color-primary-soft) 18%, transparent) !important;
+  --kpi-tile-wash: var(--kpi-tile-wash-1) !important;
+  --kpi-tile-disc-bg: linear-gradient(135deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 60%, var(--color-surface)) 100%) !important;
+  --kpi-tile-disc-fg: #ffffff !important;
+  --kpi-tile-disc-shadow: color-mix(in srgb, var(--color-primary) 35%, transparent) !important;
+  --kpi-tile-spark-grad-1: color-mix(in srgb, var(--color-primary) 45%, transparent) !important;
+  --kpi-tile-spark-grad-2: color-mix(in srgb, var(--color-primary) 5%, transparent) !important;
+}
+
+/* ------------------------------------------------------------------ *
+ *  KPI tile — header
+ *  Strip Syncfusion's default 16px padding and 22.5px min-height
+ *  so the header sits as a 12px/12px/12px row with no border
+ *  underneath (the accent stripe is the only top divider). */
+.kpi-tile.e-card .e-card-header.kpi-tile__head {
+  min-height: 0 !important;
+  padding: 18px 20px 10px 20px !important;
+  border-bottom: 0 !important;
+  background: transparent !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  width: 100% !important;
+}
+
+/* Hide the caption wrapper's default flex children so the
+ * header is a clean two-cell row (label on the left, icon
+ * disc on the right) without the multi-line preset Syncfusion
+ * applies to .e-card-header-caption. */
+.kpi-tile.e-card .e-card-header-caption {
+  display: flex !important;
+  flex-direction: column !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  gap: 4px !important;
+  padding-top: 4px !important;
+}
+
+.kpi-tile.e-card .e-card-header-title.kpi-tile__label {
+  /* Override Syncfusion's 12px padding + 16px font-size so the
+   * label sits flush against the icon disc on the right and
+   * reads at the same size as the rest of the dashboard's
+   * sub-headers (12px, medium weight). */
+  padding: 0 !important;
+  font-size: 12px !important;
+  line-height: 1.4 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.06em !important;
+  color: var(--color-text-muted) !important;
+  text-transform: uppercase !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* Sub-label — small tone-tinted badge below the label that
+ * names the chip's semantic state ("On target", "Critical",
+ * "Watch", "Target 15m"). Sits inside the caption wrapper
+ * so it stays left-aligned with the label above it. The
+ * Syncfusion E-Card subtitle class is the canonical home for
+ * this row; we use our own modifier to set the per-tone
+ * styling. */
+.kpi-tile.e-card .e-card-sub-title.kpi-tile__sublabel {
+  padding: 0 !important;
+  font-size: 12px !important;
+  line-height: 1.3 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  color: var(--kpi-tile-disc-fg, var(--color-primary)) !important;
+  text-transform: none !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  align-self: flex-start !important;
+}
+
+/* Icon disc — the eye-catching gradient disc that sits in the
+ * header's top-right. Sized at 44×44 to hold a 20 px Lucide
+ * icon with a comfortable amount of padding, and rendered
+ * with the tone-specific gradient (`--kpi-tile-disc-bg`)
+ * plus a soft outer shadow (`--kpi-tile-disc-shadow`) so the
+ * disc visibly lifts off the card. The four cards'
+ * gradient discs (green / red / amber / indigo) read as a
+ * tonal range even at a glance. */
+.kpi-tile.e-card .kpi-tile__chip {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+  margin-left: auto !important;
+}
+
+.kpi-tile.e-card .kpi-tile__chip-disc {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 14px !important;
+  background: var(--kpi-tile-disc-bg, linear-gradient(135deg, var(--color-primary), var(--color-primary-soft))) !important;
+  color: var(--kpi-tile-disc-fg, #ffffff) !important;
+  flex: 0 0 auto !important;
+  box-shadow: 0 6px 16px -6px var(--kpi-tile-disc-shadow, color-mix(in srgb, var(--color-primary) 35%, transparent)) !important;
+  transition: transform 200ms ease, box-shadow 200ms ease !important;
+}
+
+.kpi-tile.e-card:hover .kpi-tile__chip-disc {
+  transform: scale(1.06) rotate(-3deg) !important;
+  box-shadow: 0 10px 22px -8px var(--kpi-tile-disc-shadow, color-mix(in srgb, var(--color-primary) 45%, transparent)) !important;
+}
+
+/* Per-tone disc colour — re-asserted here so a `--kpi-tile-disc-*`
+ * fallback on the parent still resolves to a tone-appropriate
+ * colour even if the modifier was missed on the article.
+ * Each rule here forces the gradient to the tone's hue, even
+ * if the modifier on the article was missed. */
+.kpi-tile.e-card .kpi-tile__chip-disc.kpi-tile__chip-disc--success {
+  background: linear-gradient(135deg, var(--color-success) 0%, color-mix(in srgb, var(--color-success) 60%, var(--color-surface)) 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--color-success) 45%, transparent) !important;
+}
+
+.kpi-tile.e-card .kpi-tile__chip-disc.kpi-tile__chip-disc--error {
+  background: linear-gradient(135deg, var(--color-danger) 0%, color-mix(in srgb, var(--color-danger) 60%, var(--color-surface)) 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--color-danger) 45%, transparent) !important;
+}
+
+.kpi-tile.e-card .kpi-tile__chip-disc.kpi-tile__chip-disc--warning {
+  background: linear-gradient(135deg, var(--color-warning) 0%, color-mix(in srgb, var(--color-warning) 60%, var(--color-surface)) 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--color-warning) 45%, transparent) !important;
+}
+
+.kpi-tile.e-card .kpi-tile__chip-disc.kpi-tile__chip-disc--info {
+  background: linear-gradient(135deg, var(--color-info) 0%, color-mix(in srgb, var(--color-info) 60%, var(--color-surface)) 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--color-info) 45%, transparent) !important;
+}
+
+.kpi-tile.e-card .kpi-tile__chip-disc.kpi-tile__chip-disc--neutral {
+  background: linear-gradient(135deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 60%, var(--color-surface)) 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--color-primary) 45%, transparent) !important;
+}
+
+/* ------------------------------------------------------------------ *
+ *  KPI tile — content
+ *  The big value + the sparkline live in a column with a
+ *  12px/16px/14px padding rhythm. The value wrap is given a
+ *  fixed height so the sparkline's top edge is consistent
+ *  across all four cards. Without the fixed height, the
+ *  sparkline's top edge sits at different vertical offsets
+ *  per card and the four cards' sparklines look misaligned. */
+.kpi-tile.e-card .e-card-content.kpi-tile__content {
+  padding: 6px 20px 4px 20px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+}
+
+/* Fixed-height value wrap. The `min-height` matches the
+ * tallest observed value (the "Avg first response" card's
+ * `06m 48s` string) so the value row never wraps AND the
+ * sparkline host that follows always starts at the same
+ * baseline. We deliberately avoid `height` so the row can
+ * grow if a localised value runs to two lines on a
+ * narrow viewport. */
+.kpi-tile.e-card .kpi-tile__value-wrap {
+  display: flex !important;
+  align-items: baseline !important;
+  min-height: 44px !important;
+  margin-bottom: 8px !important;
+}
+
+.kpi-tile.e-card .kpi-tile__value {
+  /* Big value — 32 px, extra-bold, tight tracking so a value
+   * like "97.5%" reads as a single visual block. Colour falls
+   * through to `text-text` from the JSX, which resolves to
+   * the theme's primary text token. */
+  font-size: 32px !important;
+  line-height: 1.05 !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.025em !important;
+  color: var(--color-text) !important;
+  font-variant-numeric: tabular-nums !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* Sparkline host — full-bleed, fixed height, no padding so
+ * the Syncfusion Sparkline SVG lands flush with the card
+ * edges. The Syncfusion widget renders its own background
+ * (an `<svg>` with `fill` set on the area), so the host
+ * itself only needs to constrain the height. */
+.kpi-tile.e-card .kpi-tile__spark {
+  display: block !important;
+  width: 100% !important;
+  height: 56px !important;
+  margin-top: auto !important;
+  margin-bottom: 0 !important;
+  position: relative !important;
+  /* The sparkline host now has a small bottom margin that
+   *  is replaced by the e-card-separator just below; the
+   *  separator acts as the visual "spacer" between chart
+   *  and footer chip. */
+}
+
+.kpi-tile.e-card .kpi-tile__spark > * {
+  display: block !important;
+  width: 100% !important;
+  height: 56px !important;
+}
+
+/* ------------------------------------------------------------------ *
+ *  KPI tile — separator
+ *  The Syncfusion E-Card provides a built-in `.e-card-separator`
+ *  element that we use as the hairline between the sparkline
+ *  and the footer chip. We give it a subtle 1 px tonal
+ *  gradient so the divider visibly inherits the card's tone
+ *  without being a hard border. */
+.kpi-tile.e-card .e-card-separator.kpi-tile__separator {
+  display: block !important;
+  height: 1px !important;
+  width: calc(100% - 40px) !important;
+  margin: 0 20px !important;
+  border: 0 !important;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--kpi-tile-stripe, var(--color-primary)) 18%, var(--sf-border)) 50%,
+    transparent 100%
+  ) !important;
+  opacity: 0.9 !important;
+}
+
+/* ------------------------------------------------------------------ *
+ *  KPI tile — footer
+ *  Single Chip showing the trend value. The Syncfusion base
+ *  `.e-card-actions` applies a 8px top border + 8px padding;
+ *  we drop the border (the e-card-separator just above is the
+ *  divider now) and tune the padding so the footer reads as
+ *  the card's "trend row" rather than as a separate block. */
+.kpi-tile.e-card .e-card-actions.kpi-tile__actions {
+  border-top: 0 !important;
+  padding: 10px 20px 16px 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  background: transparent !important;
+  gap: 8px !important;
+}
+
+/* ------------------------------------------------------------------ *
+ *  KPI tile — footer chip (`.kpi-chip`)
+ *  The footer chip is now a plain styled pill (NOT a Syncfusion
+ *  `ChipListComponent` — that wrapper had a stale template-closure
+ *  issue that prevented the `label` and `trend` icon from updating
+ *  on re-render, see the comment block on the `Chip` component in
+ *  `OverviewTab.tsx`). The tonal palette (background / text /
+ *  border) is applied directly via React's `style` prop with
+ *  specificity 1,0,0,0 — the inline style wins the cascade against
+ *  the unlayered Syncfusion `tailwind3.css` CDN, so the rule below
+ *  only needs to set the *layout* properties (border-radius,
+ *  padding, font-size, etc.) that are easier to maintain in CSS
+ *  than in inline style.
+ *
+ *  The `border` is a 1 px solid so the pill reads as an outlined
+ *  badge; the colour is driven by the inline `borderColor` prop
+ *  that the component sets per tone. `white-space: nowrap` keeps
+ *  the trend string on a single line even on narrow viewports
+ *  (the four cards' footer chips would otherwise wrap and break
+ *  the card's vertical rhythm). */
+.kpi-chip {
+  border: 1px solid;
+  border-radius: 999px !important;
+  padding: 2px 10px !important;
+  font-size: 0.75rem !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+  white-space: nowrap !important;
+  user-select: none;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Live-feed status pill
+ *  The live-feed status row (above the at-risk grid) is a single
+ *  inline-flex pill that shows whether the live feed is running
+ *  and the most recent event ("Added #CS-10501", "Escalated
+ *  #CS-10478", "Resolved #CS-10478", etc.). The base JSX
+ *  class is `.live-feed-status`, with `.live-feed-status--running`
+ *  / `.live-feed-status--paused` modifiers and an inner
+ *  `.live-feed-status__event` span for the most-recent-event
+ *  text.
+ *
+ *  Modern, intuitive colour scheme:
+ *    • Running: soft indigo-tinted gradient surface
+ *      (primary-soft → surface-2) with a 1 px primary border
+ *      at 18% alpha, an inline primary-tinted "Live" badge, and
+ *      a pulsing primary dot. Reads as "actively updating" at a
+ *      glance — the same vocabulary the user has seen on every
+ *      other "live" surface in the app.
+ *    • Paused: muted surface (--sf-surface-2) with a 1 px
+ *      --sf-border, a neutral "Paused" badge, and a static
+ *      --sf-text-subtle dot. Reads as "available, not currently
+ *      running".
+ *    • Error: rose-tinted surface with a danger border + a
+ *      danger dot. Reads as "something went wrong".
+ *
+ *  `aria-live="polite"` on the JSX wrapper means screen readers
+ *  announce the latest event without interrupting; the colour
+ *  and badge changes are the *visual* signal. */
+.live-feed-status {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 6px 10px !important;
+  border-radius: 9999px !important;
+  border: 1px solid var(--sf-border) !important;
+  background-color: var(--sf-surface-2) !important;
+  color: var(--color-text-muted) !important;
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  white-space: nowrap !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+.live-feed-status .live-feed-status__dot {
+  display: inline-block !important;
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 9999px !important;
+  background-color: currentColor !important;
+  flex: 0 0 auto !important;
+}
+
+.live-feed-status .live-feed-status__badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 2px 8px !important;
+  border-radius: 9999px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+  text-transform: uppercase !important;
+  background-color: var(--sf-surface) !important;
+  color: var(--color-text-muted) !important;
+  border: 1px solid var(--sf-border) !important;
+  flex: 0 0 auto !important;
+}
+
+.live-feed-status .live-feed-status__event {
+  color: var(--color-text) !important;
+  font-weight: 500 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+/* Running variant — soft indigo gradient + primary border +
+ * primary dot. The gradient is intentionally subtle (alpha
+ * 0.06 at the strongest stop) so the pill still reads as
+ * a single shape rather than as a tinted block. */
+.live-feed-status.live-feed-status--running {
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-primary) 6%, transparent) 0%,
+    var(--sf-surface-2) 100%
+  ) !important;
+  border-color: color-mix(in srgb, var(--color-primary) 18%, transparent) !important;
+  color: var(--color-primary) !important;
+}
+
+.live-feed-status.live-feed-status--running .live-feed-status__badge {
+  background-color: color-mix(in srgb, var(--color-primary) 14%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-primary) 24%, transparent) !important;
+  color: var(--color-primary) !important;
+}
+
+.live-feed-status.live-feed-status--running .live-feed-status__dot {
+  /* Reuse the breach pulse keyframes (already defined above
+   * for `.sla-live--pulse`) so the live dot visibly pulses
+   * when the feed is running. The pulse is a 1.5 s loop with
+   * a slight scale + opacity dim, so the pill reads as
+   * "live" without being visually loud. */
+  animation: sla-pulse 1.5s ease-in-out infinite !important;
+  color: var(--color-primary) !important;
+}
+
+/* Paused variant — neutral surface, muted dot, "Paused" badge.
+ * The visual treatment is the same as the base pill, but
+ * `.live-feed-status--paused` is explicit so the JSX can
+ * drop the class when the feed has never run. */
+.live-feed-status.live-feed-status--paused {
+  background-color: var(--sf-surface-2) !important;
+  border-color: var(--sf-border) !important;
+  color: var(--color-text-subtle) !important;
+}
+
+.live-feed-status.live-feed-status--paused .live-feed-status__badge {
+  background-color: var(--sf-surface) !important;
+  border-color: var(--sf-border) !important;
+  color: var(--color-text-subtle) !important;
+}
+
+.live-feed-status.live-feed-status--paused .live-feed-status__dot {
+  color: var(--color-text-subtle) !important;
+  animation: none !important;
+}
+
+/* Error variant — rose-tinted surface with a danger border +
+ * a danger dot. The visual treatment is loud on purpose: the
+ * user has to see that the live feed encountered an error.
+ * `.live-feed-status--error` is currently not emitted by the
+ * JSX (the live feed has no error state yet), but the rule
+ * is in place so a future failure handler can flip the class
+ * without a CSS change. */
+.live-feed-status.live-feed-status--error {
+  background-color: var(--color-danger-soft, #fee2e2) !important;
+  border-color: color-mix(in srgb, var(--color-danger) 30%, transparent) !important;
+  color: var(--color-danger) !important;
+}
+
+.live-feed-status.live-feed-status--error .live-feed-status__badge {
+  background-color: var(--color-danger) !important;
+  border-color: var(--color-danger) !important;
+  color: var(--color-text-on-primary, #ffffff) !important;
+}
+
+.live-feed-status.live-feed-status--error .live-feed-status__dot {
+  color: var(--color-danger) !important;
+}

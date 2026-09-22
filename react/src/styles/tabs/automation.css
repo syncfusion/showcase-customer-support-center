@@ -1,0 +1,451 @@
+/* ================================================================== *
+ *  Automation tab — Syncfusion widget overrides
+ *
+ *  Per-tab CSS for AutomationTab. We re-paint the small set of
+ *  Automation-tab widgets to match the surrounding cards:
+ *
+ *    • TabComponent            → "Routing rules / SLA policies /
+ *                                 Escalation workflows / Macros /
+ *                                 Impact" nav strip
+ *    • MessageComponent        → green status banner ("All systems
+ *                                 normal")
+ *    • ListViewComponent       → SLA policy list AND the workflow
+ *                                 builder "Available blocks" palette
+ *    • GridComponent           → Routing rules table
+ *    • SwitchComponent         → per-rule on/off toggle
+ *    • ChartComponent          → Coverage line chart
+ *    • .automation-builder-connector  → vertical line between
+ *                                 workflow stack nodes
+ *
+ *  The same unlayered-CDN-beats-`@layer base` rule applies as for
+ *  the other tabs. Selectors are prefixed with `html body` to
+ *  raise specificity, and `!important` is kept for the
+ *  unlayered-CDN-beats-layer rule.
+ * ================================================================== */
+
+/* Top-level TabComponent — flat tabs that sit on the page
+ * background, with a brand-coloured underline on the active tab.
+ * The default Syncfusion Tailwind3 theme uses a thick
+ * top border on the active tab; we use the project's
+ * `border-bottom` underline instead so the tabs read as a
+ * horizontal nav strip. */
+.e-tab {
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--color-border) !important;
+  margin-bottom: var(--space-lg) !important;
+}
+
+.e-tab .e-tab-header {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+}
+
+.e-tab .e-tab-header .e-toolbar-items {
+  gap: 0 !important;
+}
+
+.e-tab .e-tab-header .e-toolbar-item {
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  margin-bottom: -1px !important;
+  padding: var(--space-sm) var(--space-md) !important;
+  color: var(--color-text-muted) !important;
+  font-size: var(--font-size-sm) !important;
+  font-weight: var(--font-weight-medium) !important;
+  white-space: nowrap !important;
+}
+
+.e-tab .e-tab-header .e-toolbar-item.e-active,
+.e-tab .e-tab-header .e-toolbar-item.e-active:focus {
+  background: transparent !important;
+  color: var(--color-text) !important;
+  border-bottom: 2px solid var(--color-primary) !important;
+}
+
+.e-tab .e-tab-header .e-toolbar-item .e-tab-text {
+  color: inherit !important;
+  font: inherit !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+
+.e-tab .e-tab-header .e-toolbar-item .e-icons {
+  display: none !important;
+}
+
+.e-tab .e-content,
+.e-tab .e-tab-content {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin-top: var(--space-md) !important;
+}
+
+/* "All systems normal" status banner — light-green variant.
+ *  Same pattern as `.breach-alert-light` on the Overview tab,
+ *  but tinted with the success palette (`.e-success-light`
+ *  class on the MessageComponent) instead of the danger
+ *  palette. The "View run history" / "Trigger dry-run"
+ *  buttons sit flush against the right edge. */
+.automation-status-light .e-message {
+  background-color: var(--color-success-soft) !important;
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-success) !important;
+  border-radius: var(--radius-lg) !important;
+  padding: 0 !important;
+  position: relative !important;
+}
+
+.automation-status-light .e-message *,
+.automation-status-light .e-message {
+  color: var(--color-text) !important;
+}
+
+.automation-status-light .bg-success {
+  color: var(--color-text-on-primary) !important;
+}
+
+.automation-status-light .e-msg-content,
+.automation-status-light .e-message .e-msg-content,
+.automation-status-light .automation-status-body {
+  display: block !important;
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  max-width: none !important;
+}
+
+.automation-status-light .e-msg-close-icon,
+.automation-status-light [class*="e-msg-close"] {
+  display: none !important;
+}
+
+/* SLA policies ListView — strip the ListView chrome so the
+ *  custom row template drives the visual rhythm. The
+ *  per-row divider is drawn by the template's
+ *  `border-b border-border` so the ListView's own per-item
+ *  borders must be removed. */
+.automation-sla-list.e-listview {
+  background: var(--color-surface) !important;
+  border: 0 !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.automation-sla-list.e-listview .e-list-parent {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.automation-sla-list.e-listview .e-list-item {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  cursor: default !important;
+}
+
+/* The ListView wraps the template in `.e-list-text`, which
+ *  is `display: inline-block` by default. Force it to a
+ *  real block so the row template's flex layout works. */
+.automation-sla-list.e-listview .e-list-text {
+  display: block !important;
+  width: 100% !important;
+  white-space: normal !important;
+  padding: 0 !important;
+  font-weight: 400 !important;
+  text-overflow: clip !important;
+  overflow: visible !important;
+}
+
+.automation-sla-list.e-listview .e-list-item:last-child .automation-sla-row {
+  border-bottom: 0 !important;
+}
+
+/* Workflow palette ListView — same chrome-stripping pattern
+ *  as the SLA list, with the per-item template providing
+ *  the dashed-border "block" affordance. */
+.automation-palette-list.e-listview {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: var(--space-sm) !important;
+}
+
+.automation-palette-list.e-listview .e-list-parent {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: var(--space-sm) !important;
+}
+
+.automation-palette-list.e-listview .e-list-item {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  cursor: grab !important;
+}
+
+.automation-palette-list.e-listview .e-list-text {
+  display: block !important;
+  width: 100% !important;
+  white-space: normal !important;
+  padding: 0 !important;
+  font-weight: 400 !important;
+  text-overflow: clip !important;
+  overflow: visible !important;
+}
+
+/* Workflow builder connector — a 2px vertical line, 16px tall,
+ *  indented to the centre of the 28px dot column. Same
+ *  pattern used on the .cases-timeline connector. */
+.automation-builder-connector {
+  width: 2px;
+  height: 16px;
+  background-color: var(--color-border);
+  margin-left: 27px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+/* Routing rules grid — when the grid uses per-column
+ *  templates (instead of a single rowTemplate) the
+ *  padding and the bottom border move from the row
+ *  container onto each cell. We also strip the default
+ *  cell padding Syncfusion ships, so the column
+ *  templates own all of the visual rhythm. */
+/* The wrapper carries `.automation-routing-grid` and the
+ * Syncfusion Grid root carries `.e-grid` — they are parent
+ * and child, NOT the same element, so a compound
+ * `.automation-routing-grid.e-grid` selector would match
+ * nothing. Use a descendant combinator instead. */
+.automation-routing-grid .e-grid .e-row {
+  border-bottom: 1px solid var(--color-border) !important;
+}
+
+.automation-routing-grid .e-grid .e-row:last-child {
+  border-bottom: 0 !important;
+}
+
+.automation-routing-grid .e-grid .e-rowcell {
+  padding: 0 !important;
+  align-self: stretch !important;
+}
+
+.automation-routing-grid .e-grid .automation-rule-cell {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 100% !important;
+  padding: var(--space-sm) var(--space-lg) !important;
+  gap: var(--space-md) !important;
+}
+
+/* Coverage line chart — match the Overview tab's chart
+ *  chrome. The `--color-border-strong` axis lines are
+ *  driven by the chart component props (see
+ *  AutomationTab.tsx) — these overrides only catch the
+ *  font/text styling on axis labels. */
+.e-chart text,
+.e-sparkline text {
+  fill: var(--color-text-muted) !important;
+}
+
+.e-chart .e-axis-line,
+.e-chart .e-axis-tick,
+.e-chart .e-gridline {
+  stroke: var(--color-border) !important;
+}
+
+.e-chart .e-chart-title,
+.e-chart .e-axes-title {
+  fill: var(--color-text) !important;
+}
+
+.e-chart .e-tooltip {
+  background-color: var(--color-surface) !important;
+  color: var(--color-text) !important;
+  border-color: var(--color-border) !important;
+}
+
+/* ================================================================== *
+ *  e-card surfaces — Automation tab
+ *
+ *  The KPI summary and impact metric cards reuse the
+ *  `kpi-tile.e-card` pattern from `overview.css` (tone-tinted
+ *  accent stripe, wash gradient, hover lift). The macro card
+ *  is a plain `e-card` (no tone modifier) and inherits the
+ *  Syncfusion base styling directly.
+ *
+ *  A few automation-specific overrides sit below to handle:
+ *    1. The breakdown pill row in the kpi tile (footer area).
+ *    2. The 50% width sparkline slot so the chart doesn't
+ *       dominate the card on wide viewports.
+ *    3. The compact 22px chip sizing for the right-edge chip.
+ *    4. A separator line between the header and the body in
+ *       the macro card so the title and body preview read as
+ *       two distinct zones.
+ * ================================================================== */
+
+/* Header — title is never truncated; chip is right-aligned. */
+.kpi-section .e-card-header,
+.kpi-section .e-card-content {
+  background: transparent !important;
+}
+
+.kpi-section .e-card-content {
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+.kpi-section .e-card-actions {
+  background: transparent !important;
+  border-top: 1px solid var(--color-border) !important;
+  padding: 0 !important;
+  /* Dropped the forced 44px tall footer — the per-row
+   * breakdown pills have their own padding, and the
+   * previous `min-height` left a dead gap when the
+   * pills wrapped to fewer rows than expected. The card
+   * now hugs its actual content. */
+  min-height: 0 !important;
+}
+
+/* Sparkline slot — owned entirely by the host wrapper. The
+ * host gets a fixed height + full width so the Syncfusion
+ * widget gets a measurable layout box (it renders an inline
+ * `<svg>` that's normally collapsed to 0×0 by flexbox unless
+ * the host has explicit dimensions). Matches the Overview
+ * tab's `.kpi-tile__spark` two-rule pattern: one for the
+ * wrapper, one for its inner Syncfusion widget. The
+ * `margin-top: auto` previously pushed the sparkline to the
+ * bottom of the content area, leaving a wide blank gap
+ * between the divider line and the chart. We drop the
+ * auto-margin so the sparkline sits directly under the
+ * value instead. */
+.kpi-section .kpi-tile__spark {
+  display: block !important;
+  width: 100% !important;
+  height: 36px !important;
+  margin-top: 0 !important;
+  position: relative !important;
+}
+
+.kpi-section .kpi-tile__spark > * {
+  display: block !important;
+  width: 100% !important;
+  height: 36px !important;
+}
+
+.kpi-section .e-sparkline,
+.kpi-section .e-sparkline-container,
+.kpi-section svg.e-sparkline {
+  height: 36px !important;
+  width: 100% !important;
+  display: block !important;
+}
+
+/* Chip — compact 22px height, consistent across all three cards. */
+.kpi-section .e-chip {
+  font-size: 11px !important;
+  height: 22px !important;
+  line-height: 22px !important;
+  padding: 0 var(--space-sm) !important;
+}
+
+/* "vs last week" pill sits on its own horizontal line
+ * directly under the sparkline, separated by a thin
+ * horizontal divider that runs the full content width
+ * (so the eye reads "value / spark / trend line" as a
+ * clean vertical stack). The pill itself uses the
+ * surface palette so it pops off the tone-tinted wash
+ * behind it. */
+.kpi-section .kpi-tile__weekly-line {
+  border-top-color: var(--color-border) !important;
+  margin-top: 0 !important;
+  padding-top: var(--space-sm, 8px) !important;
+}
+
+.kpi-section .kpi-tile__weekly {
+  font-size: 11px !important;
+  line-height: 1 !important;
+  border-radius: var(--radius-pill, 999px) !important;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04) !important;
+}
+
+/* Header title — disable Syncfusion's default
+ * `.e-ellipsistext` truncation on the KPI label so the
+ * full title (; the previously-right-aligned status chip
+ * was removed at the user's request so the title takes
+ * the entire header width without competing for
+ * horizontal space. */
+.kpi-section .e-card-header-title {
+  text-overflow: clip !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-align: left !important;
+  line-height: 1.3 !important;
+}
+
+/* Force every Automation-tab KPI tile to use the green
+ * (success) tone, regardless of which `--{tone}` modifier
+ * class the component applies. The base palette from
+ * `overview.css` only ships `.kpi-tile--{success,danger,
+ * warning,info}` rules — by setting every tone custom
+ * property to the success palette, even tiles tagged
+ * `--warning` or `--critical` are repainted green. Matches
+ * the user's request: "Change all card color into green". */
+.kpi-section .kpi-tile.e-card {
+  --kpi-tile-stripe: var(--color-success) !important;
+  --kpi-tile-wash-1: color-mix(in srgb, var(--color-success-soft, #dcfce7) 90%, transparent) !important;
+  --kpi-tile-wash-2: color-mix(in srgb, var(--color-success-soft, #dcfce7) 40%, transparent) !important;
+  --kpi-tile-wash: var(--kpi-tile-wash-1) !important;
+  --kpi-tile-spark-grad-1: color-mix(in srgb, var(--color-success) 45%, transparent) !important;
+  --kpi-tile-spark-grad-2: color-mix(in srgb, var(--color-success) 5%, transparent) !important;
+  /* Drop the 196px minimum height the base
+   * `kpi-tile.e-card` rule inherited from `overview.css`
+   * — it left a tall blank tail under the sparkline +
+   * chip when the row count or label was shorter. The
+   * card now hugs its real content height. */
+  min-height: 0e !important;
+  text-align: left !important;
+  line-height: 1.3 !important;
+}
+
+/* Impact card progress bar — full width inside the content row. */
+.kpi-section .e-progressbar {
+  width: 100% !important;
+}
+
+/* Macro card — drop the default `e-card-separator` divider
+ * (the header border-bottom is enough) and let the body
+ * preview scroll independently if it overflows. The
+ * macro card root carries the `automation-macro-card`
+ * class so the rules below are scoped to that single
+ * card type. */
+.automation-macro-card {
+  overflow: hidden !important;
+}
+
+.automation-macro-card .e-card-content {
+  max-height: 140px !important;
+  overflow: auto !important;
+}

@@ -1,0 +1,1070 @@
+# Queue Tab — Data Models & API Endpoints
+
+This document describes the server-side API contracts required to replace the
+client-side mock data in `frontend/react/src/shell/tabs/QueueTab.tsx` with
+live endpoints. The Queue tab is the triaging view at `#/queue` showing the
+ticket queue grid, saved-view pills, summary KPIs, and bulk-action /
+per-row action menus. It is the highest-mutation surface in the app — every
+grid row, every selected bulk action, and the "New ticket" dialog write back
+to a server-owned state.
+
+Each section below follows the same shape:
+
+- **Source in client** — the local constant, interface, or component
+  that consumes the data.
+- **Endpoint** — the suggested HTTP method, path, query parameters, and
+  payload.
+- **Response shape** — the JSON the server must return, with field types
+  and notes about how the client transforms it.
+- **Notes** — gotchas, contract nuances, the `Severity` / `ChipTone` /
+  etc. enums, and any client-side derivation the server should be aware
+  of (e.g. SLA severity is re-derived from `deadlineMs - now` on the
+  client every second).
+
+The page is filter-driven: a single set of state (queue, view, search,
+status, priority, channel, assignee, SLA, age) feeds the grid, the
+summary tiles, the saved-view pill counts, and the pagination control
+through a `useReducer` / `useMemo` pipeline. The list below groups
+endpoints by the **view** they serve, then calls out the filter
+contract that all of them share.
+
+---
+
+## 0. Shared enums & filter contract
+
+These enums are used by every endpoint below. They are also re-declared
+in `QueueTab.tsx` and `src/data/tickets.ts` (and are the same set used
+by the Overview / Cases tabs). The server should treat them as the
+canonical set of values; the client hardcodes display labels and
+colors.
+
+```ts
+// Severity — derived client-side from `sla.deadlineMs - now`. The server
+// may include the seed value in the response for hydration only; the
+// client re-derives on every 1-second tick.
+type Severity = 'ok' | 'risk' | 'breach';
+
+// Status — a ticket's lifecycle position. The queue default view hides
+// 'closed' and 'resolved'; a future change could surface a "Show
+// closed" toggle backed by the same `status` filter.
+type TicketStatus = 'open' | 'pending' | 'resolved' | 'closed';
+
+// Priority — also a filter value. Multi-select; default is all four.
+type PriorityKey = 'p1' | 'p2' | 'p3' | 'p4';
+
+// Channel — also a filter value. Multi-select; default is all five.
+type ChannelKey = 'email' | 'chat' | 'portal' | 'social' | 'phone';
+
+// Queue — case-category taxonomy. The literal 'all' is filter-only and
+// never appears in ticket records. The 'all' id is also the value used
+// for the "All queues" dropdown and the unscoped summary tiles.
+type QueueKey = 'all' | 'Billing' | 'Platform' | 'Account' | 'General';
+
+// Saved-view pill id — drives the queue's left-side nav. The server
+// only needs to know what each id means; the matching predicate is
+// defined client-side in `matchesView`.
+type ViewKey = 'all' | 'urgent' | 'breaching' | 'unassigned' | 'my_team' | 'escalated';
+
+// Status filter value — 'all' is a wildcard; the rest mirror TicketStatus.
+type StatusFilter = 'all' | TicketStatus;
+
+// SLA filter value — 'all' is a wildcard; the rest mirror Severity.
+type SlaFilter = 'all' | 'ok' | 'risk' | 'breach';
+
+// Age filter value — 'all' is a wildcard; the rest are upper-bound
+// minutes applied to `ticket.ageMinutes`.
+type AgeFilter = 'all' | '15m' | '1h' | '4h' | '24h';
+
+// Assignee filter value — 'all' is a wildcard; 'unassigned' matches
+// tickets whose assignee.kind === 'unassigned'; any other value is an
+// agent id from the §6 list.
+type AssigneeFilter = 'all' | 'unassigned' | string;
+
+// Chip tone — the client maps this to a CSS class (e-success / e-warning
+// / e-danger / e-info / e-secondary). Unknown values fall through to
+// 'e-secondary' (neutral). Reserved for future expansion; the queue
+// grid does not currently read it.
+type ChipTone = 'success' | 'warning' | 'error' | 'info' | 'neutral';
+
+// Toast severity — drives the toast surface's color band.
+type ToastSeverity = 'Success' | 'Info' | 'Warning' | 'Error';
+
+// Assignee — the discriminator `kind` lets the server express both an
+// agent and an unassigned ticket without nullable fields.
+type AssigneeRef =
+  | { kind: 'agent'; initials: string; name: string }
+  | { kind: 'unassigned' };
+```
+
+### 0.1 Standard filter query parameters
+
+The §1 list endpoint and the §2 view-count endpoint accept the same
+set of filter parameters. The client re-issues the list endpoint
+whenever any of these change. Re-issuing a request with the same
+filter set is a no-op for the client (`useMemo` dependencies
+short-circuit, and the reducer skips unchanged dispatches) but should
+be safe for the server to handle idempotently.
+
+| Param       | Type                              | Required | Default             | Notes                                                                              |
+| ----------- | --------------------------------- | -------- | ------------------- | ---------------------------------------------------------------------------------- |
+| `queue`     | `QueueKey`                        | no       | `all`               | One of `all`, `Billing`, `Platform`, `Account`, `General`.                          |
+| `view`      | `ViewKey`                         | no       | `all`               | Saved-view pill id. The server applies the predicate (see §0.2) on top of the other filters. |
+| `search`    | `string`                          | no       | `""`                | Free-text query, matched case-insensitively against `id`, `subject`, `customer`, `queue`. |
+| `status`    | `StatusFilter`                    | no       | `open`              | One of `all`, `open`, `pending`, `resolved`, `closed`.                              |
+| `priority`  | `PriorityKey[]` (comma-separated) | no       | `p1,p2,p3,p4`       | Empty array means "no priorities" (returns zero rows).                              |
+| `channel`   | `ChannelKey[]` (comma-separated)  | no       | `email,chat,portal,social,phone` | Empty array means "no channels" (returns zero rows).                       |
+| `assignee`  | `AssigneeFilter`                  | no       | `all`               | `all`, `unassigned`, or an agent id.                                               |
+| `sla`       | `SlaFilter`                       | no       | `all`               | One of `all`, `ok`, `risk`, `breach`. The server derives severity from `deadlineMs - now`. |
+| `age`       | `AgeFilter`                       | no       | `all`               | One of `all`, `15m`, `1h`, `4h`, `24h`. The cap is applied to `ticket.ageMinutes`.  |
+| `page`      | `number`                          | no       | `1`                 | 1-indexed page number.                                                              |
+| `pageSize`  | `number`                          | no       | `10`                | Rows per page. Max 100.                                                             |
+
+Example: `GET /api/queue/tickets?queue=all&view=urgent&priority=p1,p2&channel=email,chat&sla=risk&page=1&pageSize=10`
+
+### 0.2 Saved-view predicates
+
+The `view` parameter is a server-side filter that maps to one of the
+following predicates. The predicates are applied **on top of** the
+other filter parameters (status, priority, channel, etc.) and **after**
+the search query, so e.g. `view=unassigned&status=closed` is valid and
+returns only unassigned closed tickets.
+
+| `view`        | Predicate                                                                                |
+| ------------- | ---------------------------------------------------------------------------------------- |
+| `all`         | (no extra constraint)                                                                    |
+| `urgent`      | `priority === 'p1'`                                                                      |
+| `breaching`   | `sla.severity === 'risk'` (next 60 minutes; `breach` is included in `my_team` not here)  |
+| `unassigned`  | `assignee.kind === 'unassigned'`                                                         |
+| `my_team`     | `assignee.kind === 'agent'` AND `assignee.name IN ('Edward N.', 'Daniel K.', 'Thomas T.', 'William R.', 'Mary S.')` |
+| `escalated`   | `priority === 'p1'` AND `status !== 'closed'`                                            |
+
+The `breaching` predicate is intentionally `risk` only (not `breach`).
+The "breached" count is surfaced separately in the summary tiles
+(§3). The client currently hardcodes the `my_team` roster; a future
+change could move that list to §6.
+
+---
+
+## 1. Ticket list (the grid data source)
+
+### Source in client
+`QueueTab.tsx` — `filteredTickets` (memoized), then `visibleTickets`
+(sliced to the current page). Fed into `GridComponent` (id
+`ticket-queue-grid`) with eight columns: Ticket, Status, Priority,
+Queue, Assignee, SLA, Channel, Age, plus an Actions column. Also the
+data source for the per-row `DropDownButtonComponent` action menu.
+
+The grid is the source of truth for selection state — `rowSelected` /
+`rowDeselected` callbacks walk `getSelectedRowIndexes()` and look
+each one up via `getRowInfo(row)` to build `state.selectedIds`.
+
+### Endpoint
+
+`GET /api/queue/tickets`
+
+#### Query parameters
+
+The standard filter set (§0.1). All parameters are optional.
+
+#### Response
+
+```ts
+{
+  items: Array<{
+    id: string;                                // e.g. "#CS-10482" — primary key, includes the leading '#'
+    subject: string;                           // e.g. "Refund not received · Stripe"
+    customer: string;                          // e.g. "Oceanic Retail Ltd."
+    status: TicketStatus;                      // drives the status chip
+    priority: PriorityKey;                     // drives the priority chip
+    queue: Exclude<QueueKey, 'all'>;           // never 'all' for a real ticket
+    assignee: AssigneeRef;                     // discriminated union; see §0
+    sla: {
+      deadlineMs: number;                      // Unix epoch ms; client derives severity + label
+      severity: Severity;                      // seed value for SSR hydration only
+    };
+    channel: ChannelKey;
+    ageMinutes: number;                        // integer minutes since `opened`; drives the Age column
+  }>;
+  total: number;                               // total matching the filter set (pre-pagination)
+  page: number;                                // echoed page number
+  pageSize: number;                            // echoed page size
+  totalPages: number;                          // ceil(total / pageSize); at least 1
+  summary: {                                   // see §3 for the per-card derivation
+    open: number;                              // status !== 'closed' && status !== 'resolved'
+    breached: number;                          // sla.severity === 'breach'
+    atRisk: number;                            // sla.severity === 'risk'
+    unassigned: number;                        // assignee.kind === 'unassigned'
+    waiting: number;                           // status === 'pending'
+    avgAgeMinutes: number;                     // integer minutes; client formats to "12m" or "1h 30m"
+  };
+}
+```
+
+#### Notes
+
+- The SLA cell template (`SlaLiveCell`) re-derives `severity` and
+  `label` on every 1-second tick using the local wall clock. The
+  server's `severity` value is only used for the initial render
+  (so the first paint has the right color before the first tick).
+- `deadlineMs` is treated as the source of truth. A long-running tab
+  does not need to refresh the row to update the countdown.
+- The `id` field is used as the Syncfusion Grid primary key. The
+  server should return ticket ids that are stable across refreshes
+  (the same id must refer to the same ticket).
+- Pagination is server-side. The grid's `allowPaging={false}` is
+  purely a UI choice — the client slices locally after the server
+  responds. A future change could enable `allowPaging` and forward
+  the Syncfusion pager events to `?page=`.
+- The `summary` block is included on every response so the KPI tiles
+  and the grid can never drift out of sync. The §3 endpoint is
+  available as a cheaper, list-less call when the grid isn't visible
+  (e.g. when the user is on a different tab).
+- The `total` and `totalPages` fields drive the pagination footer.
+  When `total === 0`, the grid renders "No tickets match the current
+  filters." and the pagination control collapses.
+- The current mock implementation auto-hides `status === 'closed'` and
+  `status === 'resolved'` regardless of the filter. The server should
+  honor the user's `status` filter as the source of truth — the
+  default `status=open` parameter is what produces the same hide
+  behavior. Clients calling this endpoint with `status=all` will get
+  closed and resolved rows back.
+
+### 1.1 Record count
+
+The default `pageSize` of 10 mirrors the client's `state.pageSize`.
+A typical response for the default filter set
+(`view=all&status=open`) is expected to return 20–60 rows; the
+client's seed has 8 initial tickets + 39 generated, of which ~40
+are `open` / `pending` and visible.
+
+---
+
+## 2. View pill counts (badges)
+
+### Source in client
+`QueueTab.tsx` — `viewCounts` (memoized), fed to `VIEW_OPTIONS` and
+rendered as badges inside the saved-view pills
+(`{ id: 'all', label: 'All open', count }[]`). The pill counts are
+computed from the **full** ticket set, not the filtered one, so
+switching filters does not move the badges. The badges always
+reflect "how many tickets match each saved view, right now, ignoring
+the user's other filters."
+
+### Endpoint
+
+`GET /api/queue/view-counts`
+
+#### Query parameters
+
+| Param    | Type | Required | Default | Notes                                                                            |
+| -------- | ---- | -------- | ------- | -------------------------------------------------------------------------------- |
+| `status` | `StatusFilter` | no | `open`  | Tickets counted only if they match this status filter. Mirrors the §1 default.   |
+
+The other filter parameters (`queue`, `priority`, `channel`,
+`assignee`, `sla`, `age`, `search`) do **not** affect the pill counts
+on the client. If the server wants to support per-tenant counts in
+the future, those parameters are already plumbed in the page state.
+
+#### Response
+
+```ts
+{
+  status: StatusFilter;          // echoed
+  counts: {
+    all: number;                 // total matching the `status` filter (no extra predicate)
+    urgent: number;              // matching `urgent` predicate (§0.2) on top of `status`
+    breaching: number;           // matching `breaching` predicate on top of `status`
+    unassigned: number;          // matching `unassigned` predicate on top of `status`
+    my_team: number;             // matching `my_team` predicate on top of `status`
+    escalated: number;           // matching `escalated` predicate on top of `status`
+  };
+}
+```
+
+#### Notes
+
+- Every value in `counts` is a non-negative integer. The pill
+  renders the bare number; the client does not format ("1.2k",
+  "10+", etc.).
+- The server must keep these counts in sync with what `GET
+  /api/queue/tickets?view=...&status=...` would return, so the
+  badges and the grid never disagree.
+- A future change could add a `queue` parameter here if the design
+  ever switches to "per-queue pill counts". The current design is
+  organization-wide.
+
+---
+
+## 3. Summary KPI tiles
+
+### Source in client
+`QueueTab.tsx` — `summary` (memoized). Six tiles: Open, Breached, At
+risk, Unassigned, Waiting, Avg age. Derived from the ticket set
+**scoped to the current `queue` filter** so the tiles always match
+the grid when a single queue is selected. When `queue === 'all'`,
+the tiles reflect the whole organization.
+
+The `breached` and `atRisk` tiles are color-coded (`text-danger` and
+`text-warning` respectively). `avgAge` is formatted to "12m" or
+"1h 30m" by the client.
+
+### Endpoint
+
+`GET /api/queue/summary`
+
+#### Query parameters
+
+| Param   | Type       | Required | Default | Notes                                                                |
+| ------- | ---------- | -------- | ------- | -------------------------------------------------------------------- |
+| `queue` | `QueueKey` | no       | `all`   | When not `all`, the tiles are scoped to that queue only.             |
+| `status`| `StatusFilter` | no   | `open`  | Mirrors the §1 default.                                              |
+
+The other filter parameters do **not** affect the summary on the
+client.
+
+#### Response
+
+```ts
+{
+  queue: QueueKey;              // echoed
+  status: StatusFilter;         // echoed
+  open: number;                 // tickets where status !== 'closed' && status !== 'resolved'
+  breached: number;             // tickets where sla.severity === 'breach'
+  atRisk: number;               // tickets where sla.severity === 'risk'
+  unassigned: number;           // tickets where assignee.kind === 'unassigned'
+  waiting: number;              // tickets where status === 'pending'
+  avgAgeMinutes: number;        // integer minutes; client formats to "12m" or "1h 30m"
+}
+```
+
+#### Notes
+
+- `breached` and `atRisk` are mutually exclusive in the current
+  design (`breach` is the strictest band; `risk` is the second). A
+  ticket is never counted in both.
+- `open` includes `pending` but excludes `closed` and `resolved`
+  when `status=open`. When `status=all`, `open` should equal the
+  total of all non-closed/non-resolved tickets — i.e. the same
+  formula, with the explicit `status` filter dropped.
+- `avgAgeMinutes` is rounded to the nearest integer by the server
+  (the client does not re-round).
+- This endpoint is cheap; the client may call it more often than §1
+  (e.g. on a long-poll cadence) without measurable load.
+
+---
+
+## 4. Filter option data sources
+
+### Source in client
+`QueueTab.tsx` — five dropdown data sources, currently hardcoded as
+module-scope constants and used directly by `DropDownListComponent`:
+
+- `QUEUE_OPTIONS` — `[{ id: 'all', label: 'All queues' }, ...]`
+- `VIEW_DEFS` — `[{ id: 'all', label: 'All open' }, ...]` (the saved-
+  view pills, before counts are added)
+- `ASSIGNEE_OPTIONS` — `[{ id: 'all', label: 'Any assignee' }, ...]`
+- `SLA_OPTIONS` — `[{ id: 'all', label: 'Any SLA state' }, ...]`
+- `AGE_OPTIONS` — `[{ id: 'all', label: 'All Time' }, ...]`
+- `PRIORITY_OPTIONS` — `[{ id: 'p1', label: 'P1' }, ...]` (used by
+  the multi-select and the new-ticket dialog)
+- `CHANNEL_OPTIONS` — `[{ id: 'email', label: 'Email' }, ...]` (used
+  by the multi-select and the new-ticket dialog)
+
+The bulk-action menus (Assign, Tag, Escalate, Close, Change
+priority) also have hardcoded items. The Assign menu lists the
+`ASSIGNEE_AGENTS` roster; the Tag menu lists `vip` / `refund-risk` /
+`enterprise`; the others are tier / status enums. See §7 for the
+agent roster and the bulk-action mutation contracts.
+
+### Endpoint
+
+`GET /api/queue/filter-options`
+
+#### Query parameters
+
+None.
+
+#### Response
+
+```ts
+{
+  queues: Array<{ id: QueueKey; label: string }>;
+  views: Array<{ id: ViewKey; label: string }>;
+  assignees: Array<{ id: string; label: string }>;
+  slaStates: Array<{ id: SlaFilter; label: string }>;
+  ageBuckets: Array<{ id: AgeFilter; label: string }>;
+  priorities: Array<{ id: PriorityKey; label: string }>;
+  channels: Array<{ id: ChannelKey; label: string }>;
+  bulkActions: {
+    assignTargets: Array<{ id: string; label: string }>;
+    tags: Array<{ id: string; label: string }>;
+    escalateTiers: Array<{ id: string; label: string }>;
+    closeOptions: Array<{ id: string; label: string }>;
+    priorityTargets: Array<{ id: PriorityKey; label: string }>;
+  };
+}
+```
+
+#### Notes
+
+- The `assignees` list should always include a synthetic `all` option
+  (`{ id: 'all', label: 'Any assignee' }`) as the first entry, plus
+  `unassigned` as the second, then the agent roster. The dropdown
+  is single-select.
+- The `priorities` and `channels` arrays feed the multi-select
+  dropdowns. Every entry is rendered as a checkbox. An empty
+  selection is a valid filter (returns zero rows); the client
+  defaults to "all checked".
+- The `bulkActions.assignTargets` list is the same agent roster as
+  `assignees`, with `unassigned` as the last entry (not `auto`; the
+  Queue tab does not currently expose an auto-balance option).
+- The `bulkActions.escalateTiers` list should at minimum include
+  `tier2` and `tier3`. The labels are rendered verbatim.
+- The `bulkActions.priorityTargets` list is always exactly the four
+  `PriorityKey` values.
+
+---
+
+## 5. New ticket creation (the "New ticket" dialog)
+
+### Source in client
+`QueueTab.tsx` — `NewTicketForm` state, captured by the
+`DialogComponent` (id `new-ticket-dialog`). Fields: subject (text),
+customer (text), queue (`DropDownListComponent` over the four
+non-`all` queues), priority (`DropDownListComponent` over the four
+priorities). The dialog's primary button dispatches `CREATE_TICKET`,
+which currently only updates client state.
+
+The form is validated client-side: `subject.trim()` and
+`customer.trim()` must be non-empty. The dialog's primary button is
+disabled until both pass.
+
+### Endpoint
+
+`POST /api/queue/tickets`
+
+#### Request
+
+```ts
+{
+  subject: string;                            // required, trimmed, non-empty
+  customer: string;                           // required, trimmed, non-empty
+  queue: Exclude<QueueKey, 'all'>;            // required
+  priority: PriorityKey;                      // required
+  channel?: ChannelKey;                       // default 'email' on the server
+  assigneeId?: string | null;                 // default null (unassigned)
+}
+```
+
+#### Response
+
+```ts
+{
+  ticket: {
+    id: string;                                // e.g. "#CS-10416" — server-assigned, includes '#'
+    subject: string;
+    customer: string;
+    status: TicketStatus;                      // server-default 'open'
+    priority: PriorityKey;
+    queue: Exclude<QueueKey, 'all'>;
+    assignee: AssigneeRef;                     // server-defaults to { kind: 'unassigned' }
+    sla: {
+      deadlineMs: number;                      // server-derived from queue + priority
+      severity: Severity;                      // server-derived; client re-derives
+    };
+    channel: ChannelKey;
+    ageMinutes: number;                        // 0 on creation
+  };
+  newTicketNumber: number;                     // the numeric portion of the id, e.g. 10416
+}
+```
+
+#### Notes
+
+- The server is the source of truth for the new ticket id. The
+  client's `nextTicketNumber` counter should be discarded in favor
+  of the value returned here. A future client change can use
+  `newTicketNumber - 1` as the next optimistic id.
+- `sla.deadlineMs` should be computed from the active SLA policy for
+  the ticket's `queue` and `priority`. The default mock uses
+  `Date.now() + 60 * 60_000` (60 minutes from now). The server may
+  return any value; the client only re-derives the *severity band*
+  and the *display label*, never the deadline itself.
+- On success, the client dispatches `CREATE_TICKET` to insert the
+  row at the top of the list and toasts `"<subject> added to the
+  <queue> queue."`.
+- The endpoint is the only path that can create a ticket with
+  `status === 'open'`. Closed / resolved tickets are produced only
+  via the §7 close mutation.
+
+---
+
+## 6. Agent directory (for the bulk Assign menu)
+
+### Source in client
+`QueueTab.tsx` — `ASSIGNEE_AGENTS` (hardcoded), used by the bulk
+Assign menu and the per-row `findAgent` helper. The per-row
+"Reassign…" action currently toasts and does not open a picker; the
+contract anticipates a future change that adds one (mirroring the
+Overview / Cases tabs).
+
+### Endpoint
+
+`GET /api/queue/agents`
+
+#### Query parameters
+
+| Param          | Type                          | Required | Default | Notes                                                  |
+| -------------- | ----------------------------- | -------- | ------- | ------------------------------------------------------ |
+| `tier`         | `string`                      | no       | -       | Filter by tier (e.g. `tier2`, `tier3`).                |
+| `availableOnly`| `'true' \| 'false'`           | no       | `false` | When `true`, exclude agents at full capacity.          |
+| `limit`        | `number`                      | no       | `50`    | Max number of agents to return.                        |
+| `cursor`       | `string`                      | no       | -       | Opaque pagination cursor.                              |
+
+#### Response
+
+```ts
+{
+  items: Array<{
+    id: string;                                // e.g. "priya"
+    initials: string;                          // e.g. "PN"
+    name: string;                              // e.g. "Edward N."
+    tier: string;                              // e.g. "Tier 2"
+    role: string;                              // e.g. "Billing"
+    openCount: number;                         // current open-case count
+    cap: number;                               // max open cases
+  }>;
+  nextCursor?: string;                         // present if more results are available
+}
+```
+
+#### Notes
+
+- The list should always include a synthetic `unassigned` option as
+  the last entry (`{ id: 'unassigned', initials: '', name:
+  'Unassigned' }`) so the bulk Assign menu can route a selection
+  to "nobody".
+- The endpoint mirrors the Overview / Cases tabs' agent endpoints;
+  a shared backend handler is acceptable.
+
+---
+
+## 7. Mutations (bulk and per-row)
+
+The Queue tab has six write paths. The current implementation only
+pushes toasts on success — there are no real write endpoints. The
+list below documents the contracts those endpoints should satisfy.
+
+### 7.1 Bulk assign
+
+Triggered from the bulk-action "Assign" menu in the queue header.
+Takes the list of `state.selectedIds` and a target agent name.
+
+`POST /api/queue/tickets/bulk-assign`
+
+#### Request
+
+```ts
+{
+  ticketIds: string[];                         // from state.selectedIds
+  targetAgentId: string | null;                // 'unassigned' or an agent id; null → unassigned
+}
+```
+
+#### Response
+
+```ts
+{
+  reassigned: Array<{
+    ticketId: string;
+    newAssignee: AssigneeRef;
+  }>;
+  skipped: Array<{ ticketId: string; reason: string }>;
+}
+```
+
+#### Notes
+
+- `ticketIds` use the `id` format as returned by §1 (e.g.
+  `#CS-10482`). The server should accept both the leading-`#` and
+  the no-`#` form and normalize internally.
+- On success, the client toasts `"<N> ticket(s) assigned to <name>."`
+  where `<N>` is `state.selectedIds.length` and `<name>` is the
+  display label from the bulk-action menu (e.g. `"Edward N."`).
+- The endpoint mirrors the Overview tab's
+  `POST /api/overview/breach-alert/reassign` (§9.1 of
+  `overview.txt`); a shared backend handler is acceptable.
+
+### 7.2 Bulk tag
+
+Triggered from the bulk-action "Tag" menu. The current implementation
+toasts but does not capture the tag list anywhere on the client;
+the contract anticipates a future change that renders the tag set on
+the row.
+
+`POST /api/queue/tickets/bulk-tag`
+
+#### Request
+
+```ts
+{
+  ticketIds: string[];
+  tag: string;                                 // e.g. "vip", "refund-risk", "enterprise"
+  action: 'add' | 'remove';                    // default 'add'
+}
+```
+
+#### Response
+
+```ts
+{
+  tagged: Array<{ ticketId: string; tags: string[] }>;
+  skipped: Array<{ ticketId: string; reason: string }>;
+}
+```
+
+#### Notes
+
+- The server is the source of truth for the tag set. The client
+  does not currently read it back, but the contract anticipates a
+  future change that renders the tags on the row.
+
+### 7.3 Bulk escalate
+
+Triggered from the bulk-action "Escalate" menu. The two options
+`To Tier 2` / `To Tier 3` map to a target tier on the server.
+
+`POST /api/queue/tickets/bulk-escalate`
+
+#### Request
+
+```ts
+{
+  ticketIds: string[];
+  targetTier: 'tier2' | 'tier3';
+}
+```
+
+#### Response
+
+```ts
+{
+  escalated: Array<{
+    ticketId: string;
+    newAssignee: AssigneeRef;                 // server-chosen Tier N agent
+  }>;
+  skipped: Array<{ ticketId: string; reason: string }>;
+}
+```
+
+#### Notes
+
+- The endpoint mirrors the Overview tab's
+  `POST /api/overview/tickets/bulk-escalate` (§9.3 of
+  `overview.txt`); a shared backend handler is acceptable.
+- The current implementation does not require a `note` field. The
+  contract anticipates a future change that adds a reason textarea.
+
+### 7.4 Bulk close
+
+Triggered from the bulk-action "Close" menu. The two options
+`Close as resolved` / `Close as duplicate` map to a `newStatus` on
+the server.
+
+`POST /api/queue/tickets/bulk-close`
+
+#### Request
+
+```ts
+{
+  ticketIds: string[];
+  resolution: 'resolved' | 'duplicate';
+  reason?: string;                             // optional operator note
+}
+```
+
+#### Response
+
+```ts
+{
+  closed: Array<{
+    ticketId: string;
+    newStatus: TicketStatus;                   // 'resolved' or 'closed'
+  }>;
+  skipped: Array<{ ticketId: string; reason: string }>;
+}
+```
+
+#### Notes
+
+- `resolution: 'resolved'` produces `newStatus: 'resolved'`;
+  `resolution: 'duplicate'` produces `newStatus: 'closed'`.
+- On success, the client dispatches `UPDATE_TICKET_STATUS` for the
+  selected ids, which removes the rows from the default view
+  (because the default `status=open` filter hides them).
+- The client toasts `"<N> ticket(s) close as resolved / close as
+  duplicate."` — the wording is hardcoded and the server does not
+  need to return a message.
+
+### 7.5 Bulk change priority
+
+Triggered from the bulk-action "Change priority" menu.
+
+`POST /api/queue/tickets/bulk-priority`
+
+#### Request
+
+```ts
+{
+  ticketIds: string[];
+  priority: PriorityKey;
+}
+```
+
+#### Response
+
+```ts
+{
+  updated: Array<{
+    ticketId: string;
+    newPriority: PriorityKey;
+  }>;
+  skipped: Array<{ ticketId: string; reason: string }>;
+}
+```
+
+#### Notes
+
+- The current implementation does not require a `note` field. The
+  contract anticipates a future change that adds a reason textarea.
+- On success, the client toasts `"<N> ticket(s) set to <P#>."`.
+
+### 7.6 Per-row actions
+
+The per-row `Actions` menu in the grid has five items. The current
+implementation only the first (`Open`) and the last
+(`Close as duplicate`) have effects — the others push toasts. The
+contract documents all five so the server can wire them up
+independently.
+
+#### 7.6.1 Open (per-row)
+
+`POST /api/queue/tickets/{ticketId}/open`
+
+The current implementation navigates to
+`#/cases?id=<caseId>` directly (no server call). The endpoint
+contract anticipates a future change that records a "viewed by"
+event server-side.
+
+##### Response
+
+```ts
+{
+  ticketId: string;
+  viewedAt: string;                            // ISO-8601
+}
+```
+
+#### 7.6.2 Reassign (per-row)
+
+`POST /api/queue/tickets/{ticketId}/reassign`
+
+##### Request
+
+```ts
+{
+  intent: 'reassign';                          // fixed; the row menu does not have an 'escalate' intent
+  targetAgentId: string;                       // agent id
+  note?: string;
+}
+```
+
+##### Response
+
+```ts
+{
+  ticketId: string;
+  newAssignee: AssigneeRef;
+  at: string;                                  // ISO-8601
+}
+```
+
+The current implementation toasts and does not collect a target
+agent. The contract anticipates a future change that opens a small
+picker dialog before calling this endpoint (mirroring the Cases
+tab's §5.3).
+
+#### 7.6.3 Escalate to Tier 3 (per-row)
+
+`POST /api/queue/tickets/{ticketId}/escalate`
+
+##### Request
+
+```ts
+{
+  targetTier: 'tier3';                         // fixed by the row-menu label
+  reason?: string;
+}
+```
+
+##### Response
+
+```ts
+{
+  ticketId: string;
+  newAssignee: AssigneeRef;                    // server-chosen Tier 3 agent
+  at: string;                                  // ISO-8601
+}
+```
+
+The current implementation only toasts. The contract anticipates
+a future change that opens a small reason-input dialog before
+calling this endpoint.
+
+#### 7.6.4 Add note (per-row)
+
+`POST /api/queue/tickets/{ticketId}/notes`
+
+##### Request
+
+```ts
+{
+  body: string;
+  visibility?: 'internal' | 'public';          // default 'internal'
+}
+```
+
+##### Response
+
+```ts
+{
+  ticketId: string;
+  noteId: string;
+  at: string;                                  // ISO-8601
+}
+```
+
+The current implementation only toasts. The endpoint contract
+mirrors the Overview tab's §9.4
+(`POST /api/overview/tickets/{ticketId}/notes`) and the Cases
+tab's §5.5 (`POST /api/cases/{id}/notes`) so a single backend
+handler can serve all three.
+
+#### 7.6.5 Close as duplicate (per-row)
+
+`POST /api/queue/tickets/{ticketId}/close-duplicate`
+
+##### Request
+
+```ts
+{
+  mergedIntoTicketId: string;                  // the ticket to merge into
+  reason?: string;
+}
+```
+
+##### Response
+
+```ts
+{
+  ticketId: string;
+  mergedInto: string;
+  at: string;                                  // ISO-8601
+}
+```
+
+The current implementation dispatches `UPDATE_TICKET_STATUS` with
+`status: 'closed'` and toasts. The contract anticipates a future
+change that collects a `mergedIntoTicketId` (via a small picker
+dialog) before calling this endpoint.
+
+---
+
+## 8. Toast surface
+
+### Source in client
+`QueueTab.tsx` — a single `ToastComponent` (id `queue-toast`)
+positioned bottom-right, `timeOut: 3500`, with a close button and
+progress bar. Toasts are pushed by the `pushToast` action and
+dispatched by every successful mutation.
+
+The toast surface itself is purely client-side — every action that
+succeeds (e.g. `"Ticket #CS-10482 closed as duplicate."`) is fired
+locally. The server does not need to return toast payloads; it only
+needs to return success/failure for the mutation endpoints above.
+
+For a future cross-tab or push-notification use case, the server
+could expose a `GET /api/queue/notifications` endpoint that returns
+the same shape as the reducer's `ToastSpec` (id is server-assigned):
+
+```ts
+{
+  id: string;
+  title?: string;
+  content: string;
+  severity: ToastSeverity;
+}
+```
+
+---
+
+## 9. Endpoint summary
+
+| #     | Method | Path                                                | Purpose                                                  |
+| ----- | ------ | --------------------------------------------------- | -------------------------------------------------------- |
+| 1     | GET    | `/api/queue/tickets`                                | Filtered, paginated ticket list (the grid)               |
+| 2     | GET    | `/api/queue/view-counts`                            | Saved-view pill counts (badges)                          |
+| 3     | GET    | `/api/queue/summary`                                | Summary KPI tiles (per-queue)                            |
+| 4     | GET    | `/api/queue/filter-options`                         | All seven dropdown data sources + bulk-action menus      |
+| 5     | POST   | `/api/queue/tickets`                                | Create new ticket (the "New ticket" dialog)              |
+| 6     | GET    | `/api/queue/agents`                                 | Agent directory (for bulk Assign + future per-row Reassign) |
+| 7.1   | POST   | `/api/queue/tickets/bulk-assign`                    | Bulk assign from the toolbar menu                        |
+| 7.2   | POST   | `/api/queue/tickets/bulk-tag`                       | Bulk tag from the toolbar menu                           |
+| 7.3   | POST   | `/api/queue/tickets/bulk-escalate`                  | Bulk escalate from the toolbar menu                      |
+| 7.4   | POST   | `/api/queue/tickets/bulk-close`                     | Bulk close (resolved / duplicate) from the toolbar menu  |
+| 7.5   | POST   | `/api/queue/tickets/bulk-priority`                  | Bulk change priority from the toolbar menu               |
+| 7.6.1 | POST   | `/api/queue/tickets/{ticketId}/open`                | Per-row "Open" — record a view event                     |
+| 7.6.2 | POST   | `/api/queue/tickets/{ticketId}/reassign`            | Per-row "Reassign…" — future picker dialog               |
+| 7.6.3 | POST   | `/api/queue/tickets/{ticketId}/escalate`            | Per-row "Escalate to Tier 3" — future reason input       |
+| 7.6.4 | POST   | `/api/queue/tickets/{ticketId}/notes`               | Per-row "Add note" — future note composer                |
+| 7.6.5 | POST   | `/api/queue/tickets/{ticketId}/close-duplicate`     | Per-row "Close as duplicate" — future merge-target picker |
+| 8     | -      | (client-side)                                       | Toast surface (no GET; reducer-driven)                   |
+
+### Caching & freshness notes
+
+- The §1 list endpoint should set `Cache-Control: no-cache` — the
+  grid is the source of truth for SLA countdowns and operator
+  actions, and the per-row SLA cell re-derives severity on every
+  1-second tick.
+- The §2 view-counts endpoint is cacheable for
+  `max-age=10` since the badges are a coarse summary. The client
+  may poll it on a 30-second cadence.
+- The §3 summary endpoint is cacheable for `max-age=10` for the
+  same reason.
+- The §4 filter-options endpoint is cacheable for
+  `max-age=300` since the dropdown contents rarely change.
+- The §6 agents endpoint is cacheable for `max-age=60`.
+- All POST endpoints are write-through; the client should re-issue
+  the relevant GET (§1 after any mutation, §3 after a bulk status
+  change) on success so the tiles, the grid, and the pill counts
+  reflect the new state.
+
+---
+
+## 10. Property checklist (no missing / conflicting fields)
+
+This section is a flat list of every property the client reads from
+the response of every endpoint above. When swapping the mock data
+for a live endpoint, the server response must cover **every**
+property listed here — omitting one will silently render an empty
+panel, a missing badge, or a broken dropdown.
+
+### §1 Ticket list
+- `items[].id`, `items[].subject`, `items[].customer`,
+  `items[].status`, `items[].priority`, `items[].queue`
+- `items[].assignee.kind`, `items[].assignee.initials` (when
+  `kind === 'agent'`), `items[].assignee.name` (when
+  `kind === 'agent'`)
+- `items[].sla.deadlineMs`, `items[].sla.severity`
+- `items[].channel`, `items[].ageMinutes`
+- `total`, `page`, `pageSize`, `totalPages`
+- `summary.open`, `summary.breached`, `summary.atRisk`,
+  `summary.unassigned`, `summary.waiting`, `summary.avgAgeMinutes`
+
+### §2 View pill counts
+- `status` (echoed)
+- `counts.all`, `counts.urgent`, `counts.breaching`,
+  `counts.unassigned`, `counts.my_team`, `counts.escalated`
+
+### §3 Summary tiles
+- `queue`, `status` (echoed)
+- `open`, `breached`, `atRisk`, `unassigned`, `waiting`,
+  `avgAgeMinutes`
+
+### §4 Filter options
+- `queues[].id`, `queues[].label`
+- `views[].id`, `views[].label`
+- `assignees[].id`, `assignees[].label`
+- `slaStates[].id`, `slaStates[].label`
+- `ageBuckets[].id`, `ageBuckets[].label`
+- `priorities[].id`, `priorities[].label`
+- `channels[].id`, `channels[].label`
+- `bulkActions.assignTargets[].id`, `bulkActions.assignTargets[].label`
+- `bulkActions.tags[].id`, `bulkActions.tags[].label`
+- `bulkActions.escalateTiers[].id`, `bulkActions.escalateTiers[].label`
+- `bulkActions.closeOptions[].id`, `bulkActions.closeOptions[].label`
+- `bulkActions.priorityTargets[].id`, `bulkActions.priorityTargets[].label`
+
+### §5 New ticket
+- Request: `subject`, `customer`, `queue`, `priority`, `channel?`,
+  `assigneeId?`
+- Response: `ticket.id`, `ticket.subject`, `ticket.customer`,
+  `ticket.status`, `ticket.priority`, `ticket.queue`,
+  `ticket.assignee` (same shape as §1), `ticket.sla.deadlineMs`,
+  `ticket.sla.severity`, `ticket.channel`, `ticket.ageMinutes`,
+  `newTicketNumber`
+
+### §6 Agent directory
+- `items[].id`, `items[].initials`, `items[].name`, `items[].tier`,
+  `items[].role`, `items[].openCount`, `items[].cap`
+- `nextCursor` (optional, for future pagination)
+
+### §7.1 Bulk assign
+- Request: `ticketIds[]`, `targetAgentId`
+- Response: `reassigned[].ticketId`,
+  `reassigned[].newAssignee` (same shape as §1), `skipped[]`
+
+### §7.2 Bulk tag
+- Request: `ticketIds[]`, `tag`, `action`
+- Response: `tagged[].ticketId`, `tagged[].tags[]`, `skipped[]`
+
+### §7.3 Bulk escalate
+- Request: `ticketIds[]`, `targetTier`
+- Response: `escalated[].ticketId`,
+  `escalated[].newAssignee` (same shape as §1), `skipped[]`
+
+### §7.4 Bulk close
+- Request: `ticketIds[]`, `resolution`, `reason?`
+- Response: `closed[].ticketId`, `closed[].newStatus`, `skipped[]`
+
+### §7.5 Bulk change priority
+- Request: `ticketIds[]`, `priority`
+- Response: `updated[].ticketId`, `updated[].newPriority`, `skipped[]`
+
+### §7.6.1 Per-row open
+- Response: `ticketId`, `viewedAt`
+
+### §7.6.2 Per-row reassign
+- Request: `intent`, `targetAgentId`, `note?`
+- Response: `ticketId`, `newAssignee` (same shape as §1), `at`
+
+### §7.6.3 Per-row escalate
+- Request: `targetTier`, `reason?`
+- Response: `ticketId`, `newAssignee` (same shape as §1), `at`
+
+### §7.6.4 Per-row add note
+- Request: `body`, `visibility?`
+- Response: `ticketId`, `noteId`, `at`
+
+### §7.6.5 Per-row close as duplicate
+- Request: `mergedIntoTicketId`, `reason?`
+- Response: `ticketId`, `mergedInto`, `at`
+
+### §8 Notifications (optional, future)
+- `id`, `title?`, `content`, `severity`
+
+---
+
+## 11. Record count summary
+
+| Section | Typical record count (per response) |
+| ------- | ------------------------------------ |
+| §1 Ticket list `items[]`     | 10 (default `pageSize`)              |
+| §1 Ticket list `total`       | 20–60 (default `view=all&status=open`) |
+| §2 View pill counts `counts` | 6 entries                            |
+| §3 Summary tile values       | 6 integer scalars + 1 integer minutes |
+| §4 Filter options            | 7 arrays, 1–6 entries each + 5 bulk-action sub-arrays |
+| §5 New ticket response       | 1 ticket object                      |
+| §6 Agent directory `items[]` | 5–10 agents                          |
+| §7.* Mutation responses      | `ticketIds.length` entries, split across `reassigned` / `tagged` / `escalated` / `closed` / `updated` and `skipped` |
+| §8 Notifications (future)    | 0–20 entries                         |
