@@ -128,7 +128,7 @@ app.MapGet("/health", () =>
     });
 });
 
-app.MapAiEndpoints();
+
 app.MapAutomationEndpoints();
 app.MapCasesEndpoints();
 app.MapLookupsEndpoints();

@@ -98,8 +98,6 @@ public static class DependencyInjection
         services.AddScoped<ICasesRepository, CasesRepository>();
         services.AddScoped<ILookupsRepository, LookupsRepository>();
         services.AddScoped<IAutomationRepository, AutomationRepository>();
-        services.AddScoped<IAiService, MockAiService>();
-
         services.AddHostedService<StartupSeederHostedService>();
         return services;
     }
