@@ -1,0 +1,864 @@
+# Overview Tab — Data Models & API Endpoints
+
+This document describes the server-side API contracts required to replace the
+client-side mock data in `frontend/react/src/shell/tabs/OverviewTab.tsx` with
+live endpoints. The Overview tab is the "Service health" dashboard at the top
+level of the customer-support SLA command center. It surfaces KPI cards, a
+volume/response trend chart, a recent activity feed, an agent workload list, a
+channel-mix donut, an at-risk/breached ticket grid, breach alerts, and
+reassign/escalate dialogs.
+
+Each section below follows the same shape:
+
+- **Source in client** — the local constant, interface, or component
+  that consumes the data.
+- **Endpoint** — the suggested HTTP method, path, query parameters, and
+  payload.
+- **Response shape** — the JSON the server must return, with field types
+  and notes about how the client transforms it.
+- **Notes** — gotchas, contract nuances, the `RangeKey` / `Severity` / etc.
+  enums, and any client-side derivation the server should be aware of
+  (e.g. SLA severity is re-derived from `deadlineMs - now` on the client).
+
+The page is filter-driven: a single set of four filters (date range, queue,
+priority multi-select, channel) feeds the chart, activity list, and grid
+through a `useReducer`/`useMemo` pipeline. The list below groups endpoints by
+the **view** they serve, then calls out the filter contract that all of them
+share.
+
+---
+
+## 0. Shared enums & filter contract
+
+These enums are used by every endpoint below. They are also re-declared in
+`OverviewTab.tsx` (and in `src/data/tickets.ts` for the queue/cases tabs).
+The server should treat them as the canonical set of values; the client
+hardcodes display labels and colors.
+
+```ts
+// Range key — date-range filter, drives the chart series and KPI cards.
+type RangeKey = '24h' | '7d' | '30d' | 'quarter' | 'custom';
+
+// Severity — derived client-side from `sla.deadlineMs - now`. The server
+// may include the seed value in the response for hydration only; the
+// client re-derives on every tick.
+type Severity = 'ok' | 'risk' | 'breach';
+
+// Channel — both a ticket property and a filter value.
+type Channel = 'email' | 'chat' | 'portal' | 'social' | 'phone';
+type ChannelFilterKey = 'all' | 'Email' | 'Chat' | 'Phone' | 'Portal' | 'Social';
+
+// Priority — both a ticket property and a multi-select filter.
+type PriorityKey = 'p1' | 'p2' | 'p3' | 'p4';
+
+// Queue — case-category taxonomy. The literal string "all" is the filter
+// "no filter"; tickets themselves never have `queue === 'all'`.
+type QueueFilterKey = 'all' | 'Billing' | 'Platform' | 'Account' | 'General';
+
+// Chip tone — the client maps this to a CSS class (e-success / e-warning /
+// e-danger / e-info / e-secondary). The server may return any string;
+// unknown values are treated as "neutral".
+type ChipTone = 'success' | 'warning' | 'error' | 'info' | 'neutral';
+
+// Toast severity — drives the toast surface's color band.
+type ToastSeverity = 'Success' | 'Info' | 'Warning' | 'Error';
+```
+
+### 0.1 Standard filter query parameters
+
+Every read endpoint on the Overview tab accepts the same four query params.
+The client posts them on every state change (debounced server-side if
+desired). Re-issuing a request with the same filter set is a no-op for the
+client (`useMemo` dependencies short-circuit, and the reducer skips
+unchanged dispatches) but should be safe for the server to handle
+idempotently.
+
+| Param         | Type                                                       | Notes                                                           |
+| ------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
+| `range`       | `RangeKey`                                                 | Defaults to `7d` if omitted. `custom` is reserved for a future picker. |
+| `queue`       | `QueueFilterKey`                                           | Default `all`.                                                  |
+| `priority`    | `PriorityKey[]` (comma-separated)                          | Default `p1,p2,p3,p4`. Empty array means "no priorities".       |
+| `channel`     | `ChannelFilterKey`                                         | Default `all`.                                                  |
+
+Example: `GET /api/overview/kpis?range=7d&queue=all&priority=p1,p2,p3,p4&channel=all`
+
+---
+
+## 1. KPI summary cards
+
+### Source in client
+`OverviewTab.tsx` — `KpiCard` component, fed by `rangeData[state.range].kpi`.
+Four cards:
+
+1. **SLA compliance** — value (e.g. `94.2%`), trend direction, trend text,
+   sparkline (11 data points).
+2. **Active breaches** — count, trend, trend text, sparkline.
+3. **At-risk (next 60m)** — count, trend, trend text, sparkline.
+4. **Avg first response** — formatted duration (`11m 24s`), trend, trend
+   text, sparkline.
+
+The `range` filter changes the entire KPI object (24h / 7d / 30d / quarter
+each have a different scale and copy).
+
+### Endpoint
+
+`GET /api/overview/kpis`
+
+#### Query parameters
+
+| Param      | Type        | Required | Default |
+| ---------- | ----------- | -------- | ------- |
+| `range`    | `RangeKey`  | no       | `7d`    |
+
+The queue/priority/channel filters do **not** affect the KPI cards on the
+client (KPI values reflect the entire organization, not the filtered slice).
+If the server wants to support per-tenant KPIs in the future, the queue and
+channel filters are already plumbed in the page state and can be added to
+this endpoint without UI changes.
+
+#### Response
+
+```ts
+{
+  range: RangeKey;
+  maxY: number;             // y-axis ceiling for the trend chart in the same range
+  kpis: {
+    slaCompliance: {
+      label: string;       // human display value, e.g. "94.2%"
+      trend: 'up' | 'down' | 'flat';
+      trendText: string;   // e.g. "+1.8 pts vs last week"
+      chip: { label: string; tone: ChipTone };  // fixed to "On target" / success
+      spark: Array<{ x: number; y: number }>;  // 11 points, x = index
+      sparkColor: string;  // CSS color or var(--...) token name
+    };
+    activeBreaches: {
+      label: string;       // count as string, e.g. "7"
+      trend: 'up' | 'down' | 'flat';
+      trendText: string;   // e.g. "+3 since yesterday"
+      chip: { label: string; tone: ChipTone };  // "Critical" / error
+      spark: Array<{ x: number; y: number }>;
+      sparkColor: string;
+    };
+    atRisk: {
+      label: string;       // count as string, e.g. "18"
+      trend: 'up' | 'down' | 'flat';
+      trendText: string;   // e.g. "+5 in last hour"
+      chip: { label: string; tone: ChipTone };  // "Watch" / warning
+      spark: Array<{ x: number; y: number }>;
+      sparkColor: string;
+    };
+    avgFirstResponse: {
+      label: string;       // formatted, e.g. "11m 24s"
+      trend: 'up' | 'down' | 'flat';
+      trendText: string;   // e.g. "−2m 10s vs last week"
+      chip: { label: string; tone: ChipTone };  // "Target 15m" / neutral
+      spark: Array<{ x: number; y: number }>;
+      sparkColor: string;
+    };
+  };
+}
+```
+
+#### Notes
+
+- `spark` is passed to a Syncfusion `SparklineComponent` with `xName="x"`
+  and `yName="y"`. The tooltip format `'${x} : ${y}'` is wired in the
+  client.
+- `sparkColor` is consumed as a CSS color value (it currently holds
+  `var(--color-success)` etc.). The server may return any valid CSS color
+  string.
+- `chip` is consumed by the client's `Chip` atom. The label is shown
+  verbatim; the tone is mapped via `chipCssMap`. Unknown tones fall through
+  to `e-secondary` (neutral).
+- The `maxY` value drives the trend chart's Y-axis ceiling. It is
+  duplicated in the trend-chart response (§2) for clients that fetch them
+  independently.
+
+---
+
+## 2. Volume & response trend chart
+
+### Source in client
+`OverviewTab.tsx` — `ChartComponent` inside the "Trends + Activity" row.
+Four series, one shared X-axis (24 hourly labels for 24h and 7d; longer
+buckets for 30d and quarter are produced client-side by scaling):
+
+1. **Tickets received** — column series, primary color.
+2. **Tickets resolved** — column series, success color, 0.7 opacity.
+3. **Breaches** — line series, danger color, 2px width, no markers.
+4. **Response time target** — flat 15 across all hours, line series, info
+   color, dashed (`4 4`).
+
+### Endpoint
+
+`GET /api/overview/trend`
+
+#### Query parameters
+
+| Param   | Type        | Required | Default |
+| ------- | ----------- | -------- | ------- |
+| `range` | `RangeKey`  | no       | `7d`    |
+
+The queue/priority/channel filters do not affect the trend chart on the
+client (it represents the full organization, like the KPIs).
+
+#### Response
+
+```ts
+{
+  range: RangeKey;
+  labels: string[];          // X-axis tick labels, e.g. ["00:00", "01:00", ..., "23:00"]
+  maxY: number;              // y-axis ceiling, e.g. 130 for 7d, 1500 for quarter
+  interval: number;          // y-axis label interval, e.g. 32 for 130/4
+  series: {
+    ticketsReceived: number[];
+    ticketsResolved: number[];
+    breaches: number[];
+    responseTimeTarget: number[];  // flat reference line (e.g. 15 everywhere)
+  };
+}
+```
+
+#### Notes
+
+- The client currently derives `interval` as `Math.max(1, Math.round(maxY / 4))`
+  but the server should be free to return a custom interval (e.g. 30 for
+  7d's maxY=130 to land on round ticks). The client will read
+  `interval` if present.
+- For 30d and quarter, the current mock data scales the 7d series by 4x
+  and 12x respectively. A real backend should return the true
+  bucket-aggregated counts.
+- `labels` length must equal the length of every `series[]` array.
+- The tooltip's body is rendered with Syncfusion defaults; no extra
+  payload is required from the server.
+
+---
+
+## 3. Channel mix donut
+
+### Source in client
+`OverviewTab.tsx` — `AccumulationChartComponent` (id `channel-donut`) plus
+the legend list below. Inner radius 60%, the centered overlay shows the
+total ticket count.
+
+### Endpoint
+
+`GET /api/overview/channel-mix`
+
+#### Query parameters
+
+| Param      | Type        | Required | Default |
+| ---------- | ----------- | -------- | ------- |
+| `range`    | `RangeKey`  | no       | `7d`    |
+
+Queue/priority/channel filters do not affect this endpoint on the client
+(it represents the full organization, like KPIs/trend). A future change
+could add per-tenant slices by adding `queue`/`priority`/`channel`
+parameters.
+
+#### Response
+
+```ts
+{
+  range: RangeKey;
+  total: number;       // e.g. 312 — the number shown in the donut's center
+  slices: Array<{
+    label: string;     // e.g. "Email"
+    pct: number;       // integer percentage, sums to 100
+    color: string;     // CSS color or var(--color-...) token name
+  }>;
+}
+```
+
+#### Notes
+
+- `pct` is rendered both in the donut tooltip (`${point.x}: ${point.y}%`)
+  and the legend list. Slices are rendered in the order returned.
+- The five canonical channels are Email, Chat, Phone, Portal, Social.
+  The server may return additional channels; the donut will simply show
+  more slices.
+- `color` is consumed as a CSS color value (it currently holds
+  `var(--color-primary)` etc.).
+
+---
+
+## 4. Recent activity feed
+
+### Source in client
+`OverviewTab.tsx` — two datasets:
+
+- `activity` — curated top-5 shown in the collapsed view.
+- `extendedActivity` — synthesized 20-row backlog for the "View all"
+  expanded view.
+
+Both datasets are filtered by queue/priority/channel on the client. The
+expanded flag (`activityExpanded`) switches the data source but not the
+filter pipeline.
+
+### Endpoint
+
+`GET /api/overview/activity`
+
+#### Query parameters
+
+| Param           | Type                              | Required | Default |
+| --------------- | --------------------------------- | -------- | ------- |
+| `queue`         | `QueueFilterKey`                  | no       | `all`   |
+| `priority`      | `PriorityKey[]` (comma-separated) | no       | all     |
+| `channel`       | `ChannelFilterKey`                | no       | `all`   |
+| `expanded`      | `'true' | 'false'`                 | no       | `false` |
+| `limit`         | `number`                          | no       | server-defined |
+| `cursor`        | `string`                          | no       | -       |
+
+`range` does not affect the activity feed on the client — the feed is
+always "the most recent N events that match the filter set". The server
+should apply the range as a soft cap (e.g. show events from the last 7
+days even when `range=quarter`) or ignore it entirely.
+
+#### Response
+
+```ts
+{
+  items: Array<{
+    id: string;                   // stable id, used as the ListView primary key
+    kind:
+      | 'sla-breach'
+      | 'escalation'
+      | 'macro-applied'
+      | 'csat'
+      | 'channel-spike'
+      | 'auto-tagged'
+      | 'reassigned'
+      | 'note-added'
+      | 'closed-duplicate'
+      | 'reopened';
+    title: string;                // pre-rendered text, e.g. "SLA breach —"
+    subject: string;              // the case subject, e.g. "Billing refund"
+    ticketId: string;             // e.g. "#CS-10482" — used in the rendered <a>
+    ticketHref: string;           // URL the link points to, e.g. "/cases?id=CS-10482"
+    sub: string;                  // one-line context, e.g. "First response missed by 4m · Enterprise plan"
+    at: string;                   // ISO-8601 timestamp; client formats to relative ("2m ago", "1h ago")
+    tone: ChipTone;               // drives the icon's chip color
+    iconKey: 'shield' | 'trending' | 'settings' | 'check' | 'mail';
+    queue: Exclude<QueueFilterKey, 'all'>;
+    priority: PriorityKey;
+    channel: Channel;
+  }>;
+  nextCursor?: string;            // present if `cursor` pagination is supported
+}
+```
+
+#### Notes
+
+- The client renders `title` and `ticketId` together as
+  `"{title} {ticketLink} {subject}"`. The `ticketHref` URL is wired to
+  the `<a>` directly — the server should return a hash-route-safe URL
+  (e.g. `/#/cases?id=CS-10482` or a relative path the client can wrap).
+- `at` is rendered as a relative timestamp by the client. The current
+  implementation hardcodes `"2m ago"`, `"10m ago"`, etc. A future change
+  could swap that for a real relative-time formatter; the server should
+  return the raw ISO-8601 string regardless.
+- `iconKey` is mapped to a `lucide-react` icon on the client. New
+  `iconKey` values fall through to `Mail` as a default.
+- The expanded view (20+ items) is paginated by the server when
+  `expanded=true`; the client will request more rows on scroll if
+  `nextCursor` is present.
+- The filter pipeline (`queue`, `priority`, `channel`) is applied on the
+  client after the response arrives. The server may also apply the same
+  filters server-side and return a pre-filtered list; the client treats
+  the response as authoritative.
+
+---
+
+## 5. Agent workload list
+
+### Source in client
+`OverviewTab.tsx` — `WorkloadList` component, fed by `agents` (curated
+top-5) or `[...agents, ...extendedAgents]` (18 agents in expanded view).
+Each row carries: `initials`, `name`, `sub` (tier · queue · shift), `count`
+(open vs. cap), `loadPct` (0-100), `loadTone` (drives the progress bar
+color).
+
+### Endpoint
+
+`GET /api/overview/workload`
+
+#### Query parameters
+
+| Param       | Type                  | Required | Default |
+| ----------- | --------------------- | -------- | ------- |
+| `expanded`  | `'true' | 'false'`    | no       | `false` |
+| `limit`     | `number`              | no       | 5 / 18  |
+
+Queue/priority/channel/range filters do not affect the workload list on
+the client. The list is a roster snapshot.
+
+#### Response
+
+```ts
+{
+  onlineCount: number;          // e.g. 18 — shown in the card subtitle
+  items: Array<{
+    initials: string;           // e.g. "PN", "DK"
+    name: string;               // e.g. "Edward N."
+    sub: string;                // e.g. "Tier 2 · Billing · 6h shift"
+    openCount: number;          // e.g. 14
+    cap: number;                // e.g. 18
+    loadPct: number;            // 0-100, rounded to integer
+    loadTone: Severity;         // client maps 'ok' → success, 'risk' → warning, 'breach' → danger
+  }>;
+}
+```
+
+#### Notes
+
+- The client formats `count` as `${openCount} / ${cap}`. The server
+  should return the two values separately to keep the field semantics
+  clean.
+- `loadPct` and `loadTone` are both returned because the client uses
+  `loadTone` to pick the progress-bar color (`LOAD_TONE_COLOR[loadTone]`)
+  independently of the numeric value. The server can derive `loadTone`
+  from `loadPct` (e.g. `< 80 → ok`, `< 95 → risk`, `>= 95 → breach`) or
+  return its own logic.
+- The expanded view is the same endpoint with `expanded=true`. The
+  server decides whether to use cursor pagination or return a fixed
+  roster of N agents.
+
+---
+
+## 6. At-risk & breached ticket grid
+
+### Source in client
+`OverviewTab.tsx` — `GridComponent` (id `at-risk-grid`) bound to
+`gridDataSource` (a copy of the static `tickets` seed). Six columns:
+Ticket, Priority, Queue, Assignee, SLA, Channel. Plus an Action column
+(`DropDownButtonComponent`) with five items: Open, Reassign…, Escalate to
+Tier 3, Add note, Close as duplicate.
+
+The grid is filterable (`filterSettings={type: 'Menu'}`), sortable, and
+paginated (`pageSize: 6`). The client also runs a live-feed effect that
+mutates the grid imperatively via `addRecord` / `deleteRecord` /
+`setRowData` — see §11 for the live-feed contract.
+
+### Endpoint
+
+`GET /api/overview/at-risk-tickets`
+
+#### Query parameters
+
+| Param      | Type                              | Required | Default |
+| ---------- | --------------------------------- | -------- | ------- |
+| `queue`    | `QueueFilterKey`                  | no       | `all`   |
+| `priority` | `PriorityKey[]` (comma-separated) | no       | all     |
+| `channel`  | `ChannelFilterKey`                | no       | `all`   |
+| `range`    | `RangeKey`                        | no       | `7d`    |
+
+#### Response
+
+```ts
+{
+  items: Array<{
+    id: string;                              // e.g. "#CS-10482"
+    subject: string;                         // e.g. "Refund not received · Stripe"
+    priority: PriorityKey;
+    queue: Exclude<QueueFilterKey, 'all'>;
+    assignee:
+      | { kind: 'agent'; initials: string; name: string }
+      | { kind: 'unassigned' };
+    sla: {
+      deadlineMs: number;                    // Unix epoch ms; client derives severity + label
+      severity: Severity;                    // seed value for SSR hydration only
+    };
+    channel: Channel;
+  }>;
+  total: number;                             // total matching the filter (pre-pagination)
+}
+```
+
+#### Notes
+
+- The SLA cell template (`SlaLiveCell`) re-derives `severity` and
+  `label` on every 1-second tick using the local wall clock. The
+  server's `severity` value is only used for the initial render
+  (so the first paint has the right color before the first tick).
+- `deadlineMs` is treated as the source of truth. A long-running tab
+  does not need to refresh the row to update the countdown.
+- The grid also computes `liveCounts` (`breach` / `risk` / `total`)
+  client-side on every render. If the server wants to provide an
+  authoritative count, a `summary` field can be added to the
+  response; the client currently ignores it.
+- The grid's `id` field is used as the primary key. The server should
+  return ticket ids that are stable across refreshes (the same id
+  must refer to the same ticket).
+- Pagination is currently client-side (`pageSize: 6`). If the server
+  wants to push pagination server-side, it should return the
+  `total` field and the grid's `Page` service will honor it.
+
+---
+
+## 7. Breach alert banner
+
+### Source in client
+`OverviewTab.tsx` — `MessageComponent` (id `breach-alert`) with
+`severity="Error"`. Hardcoded copy: "3 P1 cases will breach SLA in the
+next 30 minutes" / "Billing · Enterprise queue · Assignee: Unassigned".
+Two buttons: **View cases** (navigates to `/cases`) and **Reassign now**
+(opens the breach-reassign dialog and pushes a toast).
+
+The hardcoded "3 P1 cases" should come from the server in production so
+the number stays accurate.
+
+### Endpoint
+
+`GET /api/overview/breach-alert`
+
+#### Query parameters
+
+| Param   | Type        | Required | Default |
+| ------- | ----------- | -------- | ------- |
+| `range` | `RangeKey`  | no       | `7d`    |
+
+#### Response
+
+```ts
+{
+  active: boolean;            // when false, the banner is hidden entirely
+  heading: string;            // e.g. "3 P1 cases will breach SLA in the next 30 minutes"
+  subheading: string;         // e.g. "Billing · Enterprise queue · Assignee: Unassigned"
+  ticketIds: string[];        // ids to surface in the breach-reassign dialog
+  viewCasesHref: string;      // e.g. "/cases?priority=p1&at-risk=true"
+}
+```
+
+#### Notes
+
+- The `viewCasesHref` URL is currently `/cases` in the client. The
+  server can return a richer filter URL (e.g. pre-applied `priority=p1`
+  and a `at-risk=true` flag the cases page understands).
+- `ticketIds` is what the breach-reassign dialog (see §9) operates on.
+  The dialog currently lists three hardcoded ids (`#CS-10482`,
+  `#CS-10475`, `#CS-10471`); the server should return the live
+  equivalent.
+
+---
+
+## 8. Filter option data sources
+
+### Source in client
+`OverviewTab.tsx` — five dropdown data sources, currently hardcoded as
+module-scope constants:
+
+- `dateRangeOptions` — `[{ id: '24h', label: 'Last 24 hours' }, ...]`
+- `queueOptions` — `[{ id: 'all', label: 'All queues' }, { id: 'Billing', label: 'Billing' }, ...]`
+- `channelOptions` — `[{ id: 'all', label: 'All channels' }, { id: 'Email', label: 'Email' }, ...]`
+- `priorityOptions` — `[{ id: 'p1', label: 'P1' }, ...]`
+- `agentOptions` — used inside the breach-reassign dialog, includes
+  a synthetic `auto` option (`Auto-balance by load`).
+- `tierOptions` — used inside the bulk-escalate dialog.
+
+### Endpoint
+
+`GET /api/overview/filter-options`
+
+#### Response
+
+```ts
+{
+  dateRanges: Array<{ id: RangeKey; label: string }>;
+  queues: Array<{ id: QueueFilterKey; label: string }>;
+  channels: Array<{ id: ChannelFilterKey; label: string }>;
+  priorities: Array<{ id: PriorityKey; label: string }>;
+  agents: Array<{ id: string; label: string }>;       // includes a synthetic 'auto' option
+  tiers: Array<{ id: string; label: string }>;
+}
+```
+
+#### Notes
+
+- The `agents` list should always include the synthetic `auto` option
+  (`{ id: 'auto', label: 'Auto-balance by load' }`) as the first
+  entry. The client pre-selects it in the breach-reassign dialog.
+- The `tiers` list should at minimum include `tier2` and `tier3`. A
+  future change could add `tier1` for tier-down escalations.
+- The five canonical queues / channels / priorities can be returned as
+  is, or augmented with extra entries (e.g. a new queue); the dropdowns
+  will simply show more options.
+
+---
+
+## 9. Reassign & escalate dialogs
+
+Three dialogs in the page, all of which are **mutations**. The current
+implementation only pushes a toast on success — there are no real write
+endpoints. The list below documents the contracts those endpoints should
+satisfy.
+
+### 9.1 Bulk reassign (breach-alert "Reassign now")
+
+Triggered from the breach-alert banner. Takes the list of `ticketIds`
+from the breach-alert response (§7) plus a target agent.
+
+`POST /api/overview/breach-alert/reassign`
+
+#### Request
+
+```ts
+{
+  ticketIds: string[];                  // from the breach-alert response
+  targetAgentId: string;                // 'auto' (auto-balance by load) or an agent id
+  reason?: string;                      // optional operator note
+}
+```
+
+#### Response
+
+```ts
+{
+  reassigned: Array<{
+    ticketId: string;
+    newAssignee: { initials: string; name: string };
+  }>;
+  skipped: Array<{ ticketId: string; reason: string }>;
+}
+```
+
+#### Notes
+
+- The "View all cases" button is a navigation only — it does not call
+  this endpoint.
+- The "Reassign now" button in the footer is the only path that
+  triggers this call.
+
+### 9.2 Per-row reassign / escalate
+
+Triggered from the per-row Action menu (`Reassign…` or `Escalate to
+Tier 3`). The dialog captures the target agent and an optional note.
+
+`POST /api/overview/tickets/{ticketId}/reassign`
+
+#### Request
+
+```ts
+{
+  intent: 'reassign' | 'escalate';
+  targetAgentId: string;                // agent id
+  note?: string;                        // operator note (multiline)
+}
+```
+
+#### Response
+
+```ts
+{
+  ticketId: string;
+  newAssignee: { initials: string; name: string };
+  intent: 'reassign' | 'escalate';
+  at: string;                           // ISO-8601, used in the activity feed
+}
+```
+
+#### Notes
+
+- For `intent: 'escalate'`, the server may constrain `targetAgentId` to
+  Tier 3 agents. A future change could add a `tier` parameter and
+  validate it server-side.
+- The dialog currently defaults to agent id `priya` and a blank note.
+
+### 9.3 Bulk escalate
+
+Triggered from the "Bulk escalate" button in the at-risk grid header.
+The dialog lists the currently-filtered tickets (server-side snapshot of
+the §6 response) and lets the user pick a target tier and a reason.
+
+`POST /api/overview/tickets/bulk-escalate`
+
+#### Request
+
+```ts
+{
+  ticketIds: string[];                  // from the §6 response
+  targetTier: 'tier2' | 'tier3';        // from the tierOptions dropdown
+  reason?: string;                      // optional operator note (multiline)
+}
+```
+
+#### Response
+
+```ts
+{
+  escalated: Array<{
+    ticketId: string;
+    newAssignee: { initials: string; name: string };
+  }>;
+  skipped: Array<{ ticketId: string; reason: string }>;
+}
+```
+
+#### Notes
+
+- The button is destructive (uses `e-primary e-danger`); the toast on
+  success reads "{N} tickets escalated to Tier 3.".
+- The dialog header reads "Escalate {N} ticket(s)?" where N is the
+  filtered count.
+
+### 9.4 Per-row note add
+
+Triggered from the per-row Action menu (`Add note`).
+
+`POST /api/overview/tickets/{ticketId}/notes`
+
+#### Request
+
+```ts
+{
+  body: string;                         // the operator's note
+  visibility?: 'internal' | 'public';   // default 'internal'
+}
+```
+
+#### Response
+
+```ts
+{
+  ticketId: string;
+  noteId: string;
+  at: string;                           // ISO-8601
+}
+```
+
+#### Notes
+
+- The current mock implementation does not collect a note body; it
+  just pushes a toast. The endpoint contract anticipates a future
+  change that opens a note dialog.
+
+### 9.5 Per-row close as duplicate
+
+Triggered from the per-row Action menu (`Close as duplicate`).
+
+`POST /api/overview/tickets/{ticketId}/close-duplicate`
+
+#### Request
+
+```ts
+{
+  mergedIntoTicketId: string;           // the ticket to merge into
+  reason?: string;                      // optional operator note
+}
+```
+
+#### Response
+
+```ts
+{
+  ticketId: string;                     // the closed ticket id
+  mergedInto: string;                   // the ticket it was merged into
+  at: string;                           // ISO-8601
+}
+```
+
+#### Notes
+
+- The current mock implementation does not collect a merge target; a
+  future change could open a small picker dialog before calling this
+  endpoint.
+
+### 9.6 Per-row open (view ticket)
+
+Triggered from the per-row Action menu (`Open`). The current
+implementation only pushes a toast ("Ticket {id} opened."). The
+endpoint contract anticipates a future change that returns the ticket
+detail URL or navigates directly.
+
+---
+
+## 10. Toast surface
+
+### Source in client
+`OverviewTab.tsx` — single `ToastComponent` (id `overview-toast`)
+positioned bottom-right, `timeOut: 3500`, with progress bar and close
+button. Toasts are pushed by `pushToast({ title, content, severity })`
+in the reducer.
+
+The toast surface itself is purely client-side — every action that
+succeeds (e.g. "Reassignment queued for 3 tickets") is fired locally.
+The server does not need to return toast payloads; it only needs to
+return success/failure for the mutation endpoints above.
+
+For a future cross-tab or push-notification use case, the server could
+expose a `GET /api/overview/notifications` endpoint that returns the
+same shape as the reducer's `ToastSpec` (id is server-assigned):
+
+```ts
+{
+  id: string;
+  title?: string;
+  content: string;
+  severity: ToastSeverity;
+}
+```
+
+---
+
+## 11. Live feed (imperative grid mutations)
+
+### Source in client
+`OverviewTab.tsx` — a `useEffect` that runs on a 3.5-second interval
+when `state.liveFeedRunning` is true. Each tick picks one of three
+operations and calls the grid's imperative API:
+
+- `addRecord` (60% of ticks) — adds a new ticket near breach.
+- `setRowData` (25% of ticks) — escalates a random non-p1 ticket to p1
+  and bumps the deadline back 60s.
+- `deleteRecord` (15% of ticks) — removes the oldest breaching ticket
+  (cap at 12 rows).
+
+The grid is the source of truth; the reducer's `LIVE_FEED_STEP` action
+only updates the event log pill. The live feed is a **demo affordance**
+— there is no server-side equivalent. The Start/Stop button in the
+header is currently commented out in the source.
+
+For a future change that surfaces a real live feed, the server could
+expose a Server-Sent Events (SSE) or WebSocket channel that pushes the
+same operation types. The client would adapt by calling the same
+imperative methods (`addRecord` / `setRowData` / `deleteRecord`) on the
+SSE event. No new endpoint contract is required for the demo; the SSE
+contract is deferred to the "Insights" tab (tab-05) which already
+documents a separate live-telemetry channel.
+
+---
+
+## 12. Endpoint summary
+
+| #  | Method | Path                                                | Purpose                                            |
+| -- | ------ | --------------------------------------------------- | -------------------------------------------------- |
+| 1  | GET    | `/api/overview/kpis`                                | KPI cards (4) + chart y-axis ceiling               |
+| 2  | GET    | `/api/overview/trend`                               | Volume / response trend chart (4 series)           |
+| 3  | GET    | `/api/overview/channel-mix`                         | Channel donut (5 slices) + total                   |
+| 4  | GET    | `/api/overview/activity`                            | Recent activity feed (paginated)                   |
+| 5  | GET    | `/api/overview/workload`                            | Agent workload list (top-5 or full roster)        |
+| 6  | GET    | `/api/overview/at-risk-tickets`                     | At-risk & breached grid data                       |
+| 7  | GET    | `/api/overview/breach-alert`                        | Breach-alert banner copy + ticket ids              |
+| 8  | GET    | `/api/overview/filter-options`                      | All five dropdown data sources                     |
+| 9.1| POST   | `/api/overview/breach-alert/reassign`               | Bulk reassign from breach alert                    |
+| 9.2| POST   | `/api/overview/tickets/{ticketId}/reassign`         | Per-row reassign or escalate                       |
+| 9.3| POST   | `/api/overview/tickets/bulk-escalate`               | Bulk escalate (filtered grid)                      |
+| 9.4| POST   | `/api/overview/tickets/{ticketId}/notes`            | Add internal note                                  |
+| 9.5| POST   | `/api/overview/tickets/{ticketId}/close-duplicate`  | Close as duplicate (with merge target)             |
+| 9.6| -      | (no current endpoint)                               | Per-row open — reserved for future navigation      |
+
+### Caching & freshness notes
+
+- The KPIs / trend / channel-mix / workload endpoints are cacheable
+  for 30 seconds (`Cache-Control: max-age=30`) and revalidated
+  client-side on filter changes.
+- The at-risk-tickets endpoint should set `Cache-Control: no-cache` —
+  the grid is the source of truth for SLA countdowns and the
+  live-feed mutations.
+- The activity feed endpoint should respect the same `Cache-Control`
+  policy as the at-risk-tickets endpoint when the live feed is
+  running.
+- The breach-alert endpoint should revalidate every 60 seconds; the
+  banner is meant to be quiet until a real alert fires.
+- All POST endpoints are write-through; the client should re-issue
+  the relevant GET (e.g. §6 after a §9.2 reassign) on success.

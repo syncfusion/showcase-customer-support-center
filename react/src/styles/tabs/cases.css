@@ -1,0 +1,361 @@
+/* ================================================================== *
+ *  Cases tab — Syncfusion widget overrides
+ *
+ *  Per-tab CSS for CasesTab. Two Syncfusion widgets need re-painting
+ *  to match the surrounding cases-card shell:
+ *
+ *    1. TimelineComponent (`.cases-timeline`) — the per-event
+ *       dot colour, dot/connector layout, and per-card card surface.
+ *    2. RichTextEditorComponent (`.cases-composer`) — the reply
+ *       composer used on the case detail page.
+ *
+ *  Plus the related-cases ListView (`.related-cases-list`) used in
+ *  the right-rail of the case detail page. That block was originally
+ *  in `theme/tokens.css` next to the activity-feed / workload
+ *  ListView overrides, but it's owned by CasesTab, so it lives here.
+ *
+ *  All rules are intentionally UNLAYERED (no `@layer base`) and use
+ *  the `html body` prefix to win the cascade against the unlayered
+ *  Syncfusion CDN / Tailwind3 theme stylesheet (see repo memory
+ *  "Unlayered-CDN-beats-`@layer base`").
+ * ================================================================== */
+
+/* ------------------------------------------------------------------ *
+ *  Cases tab — Syncfusion Timeline (`.cases-timeline`)
+ *
+ *  The base Syncfusion Tailwind3 stylesheet already provides the
+ *  full vertical + before-alignment layout (dot-item, content cell,
+ *  vertical connector via `::after`). We only need minimal overrides
+ *  here:
+ *    1. Per-kind dot colour via `--dot-color`
+ *    2. Slightly larger dot (20px) with a surface ring so the dot
+ *       pops against the card, mirroring the original design
+ *    3. Strip the default `e-content` padding so our custom card
+ *       fills the cell edge-to-edge
+ *
+ *  Per the repo's documented CSS-cascade gotcha (unlayered CDN rules
+ *  beat `@layer base` overrides) this block is intentionally
+ *  unlayered. Selectors are prefixed with `html body` for a
+ *  specificity bump.
+ * ------------------------------------------------------------------ */
+
+/* Per-kind dot colours — set `--dot-color` on the indicator so the
+ * background and icon colour change per event kind. The indicator
+ * is rendered by the global template (see CasesTab.tsx). */
+.cases-timeline .indicator.kind-system {
+  --dot-color: var(--color-warning);
+}
+.cases-timeline .indicator.kind-customer {
+  --dot-color: var(--color-info);
+}
+.cases-timeline .indicator.kind-agent {
+  --dot-color: var(--color-primary);
+}
+.cases-timeline .indicator.kind-note {
+  --dot-color: var(--color-success);
+}
+
+/* Container row — flex so the dot column and content sit side-by-side.
+ * `width: 100%` forces the template to fill the row so every card
+ * is the same width regardless of how long the body text is
+ * (otherwise the timeline shrinks to the longest text and short
+ * cards end up misaligned). */
+.cases-timeline .template-container {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  padding: 0;
+  margin: 0;
+}
+
+/* In template mode Syncfusion wraps the template in a bare
+ * `<div>` between the `<li.e-timeline-item>` and
+ * `<div.template-container>`. Without explicit width on every
+ * link in the chain, the inner template-container collapses to
+ * its content width — short cards become narrower than long
+ * ones, producing the stair-step misalignment. Force width
+ * 100% all the way down so every card gets the same column. */
+.cases-timeline .e-timeline-items,
+.cases-timeline .e-timeline-item,
+.cases-timeline .e-timeline-item > div {
+  width: 100%;
+  align-items: stretch;
+}
+
+/* Dot column. The connector is NOT drawn on this column (see
+ * the `li.e-timeline-item::before` rule below) because in template
+ * mode Syncfusion doesn't give `.progress-line` enough height —
+ * the `::after height: 100%` would collapse to the height of the
+ * dot only (~28px) instead of reaching down to the next dot.
+ * Drawing the line on the `<li>` instead uses the full item
+ * height (dot + card). */
+.cases-timeline .progress-line {
+  position: relative;
+  flex: 0 0 28px;
+  padding-top: 2px;
+}
+
+/* The dot itself — a 24px filled circle with the lucide icon
+ * inside. The background is driven by `--dot-color`, which the
+ * per-item `kind-*` class sets above. */
+.cases-timeline .indicator {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background-color: var(--dot-color, var(--color-border-strong));
+  color: var(--color-text-inverse);
+  box-shadow: 0 0 0 2px var(--color-surface);
+}
+
+/* Connector line — drawn on the `<li>` so it spans the full
+ * item height (dot + card) and reaches down to the next dot.
+ * In template mode the Syncfusion Tailwind3 theme's
+ * `.e-connector.e-item-template::after` rule has `content: unset`
+ * (so the default connector disappears), and the custom
+ * `.progress-line::after` only gets the height of the dot column
+ * (~28px) instead of reaching the next dot. We roll our own here.
+ *
+ * - `position: relative` is required on the `li` for the pseudo-
+ *   element to anchor to it.
+ * - `top: 12px` starts the line at the bottom of the 24px dot
+ *   (centred on the dot's vertical axis).
+ * - `left: 13px` centres the 2px line on the 28px dot column
+ *   (14px centre − 1px half-width = 13px).
+ * - `height: 100%` extends the line to the bottom of the
+ *   `li`, which contains the card as well as the dot.
+ * - The line uses slate-400 (one shade darker than
+ *   `--color-border-strong`) so it's visibly contrasted against
+ *   the white surface card it sits on. `--color-border` alone
+ *   (#e2e8f0 on #ffffff) is too faint to read.
+ */
+.cases-timeline .e-timeline-item {
+  position: relative;
+}
+.cases-timeline .e-timeline-item::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: 13px;
+  width: 2px;
+  height: 100%;
+  background-color: #94a3b8; /* slate-400 */
+  z-index: 0;
+  transform: translateX(-1px);
+}
+
+/* Hide the connector below the last item so the line doesn't
+ * extend past the final dot. */
+.cases-timeline .e-timeline-item:last-child::before {
+  display: none;
+}
+
+/* The content cell — grows to fill the rest of the row. */
+.cases-timeline .timeline-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 0 var(--spacing-md) var(--spacing-md);
+}
+
+/* The card rendered inside the template. */
+.cases-timeline .cases-timeline-card {
+  display: block;
+}
+
+/* ================================================================== *
+ *  Cases tab — Syncfusion RichTextEditor (`.cases-composer`)
+ *
+ *  The RTE theme is loaded from
+ *    @syncfusion/ej2-tailwind3-theme/styles/rich-text-editor/index.css
+ *  (see the @import at the top of `index.css`). That stylesheet is
+ *  unlayered and ships the full set of `.e-rte`, `.e-rte-toolbar`,
+ *  `.e-toolbar-item`, `.e-rte-content`, `.e-richtexteditor` rules
+ *  plus the Syncfusion Tailwind3 design tokens. The blocks below
+ *  re-paint the composer to match the surrounding cases-card shell
+ *  using our own design tokens (`--color-surface`, `--color-border`,
+ *  `--color-text`, …) so the editor doesn't look like a foreign
+ *  island inside the page.
+ *
+ *  Selectors are prefixed with `html body` to raise specificity
+ *  above the unlayered CDN/theme rules (see repo memory
+ *  "Unlayered-CDN-beats-`@layer base`" for the full cascade story).
+ * ================================================================== */
+
+/* Outer wrapper — give it the same border, radius, and surface
+ * as the rest of the cases cards. */
+.cases-composer.e-rte {
+  border: 1px solid var(--color-border) !important;
+  border-radius: var(--radius-md) !important;
+  background-color: var(--color-surface) !important;
+  overflow: hidden;
+}
+
+/* Toolbar row — pin the same surface-2 background the old
+ * native-button row used, with a hairline divider into the
+ * content area below. */
+.cases-composer .e-rte-toolbar {
+  background-color: var(--color-surface-2) !important;
+  border-bottom: 1px solid var(--color-border) !important;
+  padding: var(--spacing-xs) var(--spacing-sm) !important;
+}
+
+/* Individual toolbar button — match the cases-card hover state. */
+.cases-composer .e-toolbar-item .e-tbar-btn {
+  border-radius: var(--radius-sm) !important;
+  color: var(--color-text-muted) !important;
+}
+.cases-composer .e-toolbar-item .e-tbar-btn.e-btn:hover,
+.cases-composer .e-toolbar-item .e-tbar-btn.e-btn:focus {
+  background-color: var(--color-surface) !important;
+  color: var(--color-text) !important;
+}
+.cases-composer .e-toolbar-item .e-tbar-btn.e-active .e-tbar-btn-text {
+  color: var(--color-primary) !important;
+}
+
+/* Vertical separator between toolbar groups. */
+.cases-composer .e-toolbar-separator {
+  background-color: var(--color-border) !important;
+  margin: 0 var(--spacing-xs) !important;
+  width: 1px !important;
+  height: 18px !important;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Related cases list (CasesTab — right sidebar)
+ *
+ *  Mirrors the .activity-feed-list / .workload-list strategy used on
+ *  the Overview tab. We strip the Syncfusion-injected list chrome
+ *  (background, border, default .e-list-text nowrap) so the per-row
+ *  template can be a real block: a 3-column grid (priority dot · text
+ *  · copy-link button) with horizontal padding and a 1 px divider
+ *  under each item except the last.
+ *
+ *  The .related-cases-row class is added by the hoisted
+ *  RelatedCasesRowTemplate in CasesTab.tsx so the layout rules
+ *  only target rows in this specific list.
+ *
+ *  The unlayered `html body` + `!important` is required to beat
+ *  the unlayered Syncfusion CDN stylesheet (see repo memory
+ *  "Layer cascade trap"). */
+.related-cases-list.e-listview {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.related-cases-list.e-listview .e-list-parent {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.related-cases-list.e-listview .e-list-item {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  cursor: default !important;
+}
+
+.related-cases-list.e-listview .e-list-item:hover,
+.related-cases-list.e-listview .e-list-item.e-hover {
+  background: var(--sf-surface-2) !important;
+}
+
+/*
+ * Override the inline-block + nowrap on .e-list-text so the
+ * template's 3-column grid can lay out. Without this, .e-list-text
+ * collapses to a single line and the priority dot / copy button
+ * land on top of the text.
+ */
+.related-cases-list.e-listview .e-list-text {
+  display: block !important;
+  width: 100% !important;
+  white-space: normal !important;
+  padding: 0 !important;
+  font-weight: 400 !important;
+  text-overflow: clip !important;
+  overflow: visible !important;
+  color: inherit !important;
+}
+
+/* Per-row layout: padding on left/right + 1 px divider under each
+ * item except the last. The divider uses --sf-border so it follows
+ * the active theme. Bottom padding gives the list a little breathing
+ * room so the last row's copy button doesn't sit flush against the
+ * card's bottom border. */
+.related-cases-list.e-listview .related-cases-row {
+  display: block !important;
+  width: 100% !important;
+  padding: 12px 16px !important;
+  border-bottom: 1px solid var(--sf-border) !important;
+}
+
+.related-cases-list.e-listview .e-list-item:last-child .related-cases-row {
+  border-bottom: 0 !important;
+  padding-bottom: 16px !important;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Active case switcher (CasesTab — top-right)
+ *
+ *  Elevated card that wraps the case selector so it reads as a view
+ *  switcher rather than another action button. Kept unlayered and
+ *  prefixed with `html body` to beat the unlayered CDN theme.
+ * ------------------------------------------------------------------ */
+html body .cases-active-case-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  min-width: 180px;
+}
+
+html body .cases-active-case-card__label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-subtle);
+  line-height: 1;
+}
+
+/* The dropdown's input renders as a thin, quiet field by default.
+   Give it a subtle filled look so it feels like a selected badge. */
+html body .cases-active-case-card .e-input-group.e-control-wrapper {
+  background-color: var(--color-surface);
+  border-color: var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  min-height: 36px;
+}
+
+html body .cases-active-case-card .e-input-group.e-control-wrapper .e-input {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+html body .cases-active-case-card .e-input-group.e-control-wrapper .e-ddl-icon {
+  color: var(--color-text-muted);
+}
+
+html body .cases-active-case-card .e-input-group.e-control-wrapper:hover {
+  border-color: var(--color-primary);
+}
+
+html body .cases-active-case-card .e-input-group.e-control-wrapper.e-input-focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-soft);
+}

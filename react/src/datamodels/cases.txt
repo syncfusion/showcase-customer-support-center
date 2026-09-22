@@ -1,0 +1,727 @@
+# Cases Tab — Data Models & API Endpoints
+
+This document describes the server-side API contracts required to replace the
+client-side mock data in `frontend/react/src/shell/tabs/CasesTab.tsx` with
+live endpoints. The Cases tab is the single-case detail page (e.g.
+`#/cases?id=CS-10478`) showing the customer profile, an interaction
+timeline, a reply composer, internal notes, related cases, SLA timers, the
+current assignee, and three confirmation dialogs (Resolve / Escalate /
+Reassign).
+
+Each section below follows the same shape:
+
+- **Source in client** — the local constant, interface, or component
+  that consumes the data.
+- **Endpoint** — the suggested HTTP method, path, query parameters, and
+  payload.
+- **Response shape** — the JSON the server must return, with field types
+  and notes about how the client transforms it.
+- **Notes** — gotchas, contract nuances, the `Severity` / `ChipTone` /
+  etc. enums, and any client-side derivation the server should be aware
+  of (e.g. SLA severity is re-derived from `deadlineMs - now` on the
+  client every second).
+
+The page is a single-record view. There are no shared filters like the
+Overview tab — the only request input is the case id parsed from the URL
+hash query string (`#/cases?id=CS-10478`). The list of case ids the
+selector dropdown shows is also a server-driven endpoint so a real
+support agent can navigate to any open case.
+
+---
+
+## 0. Shared enums
+
+These enums are used by every endpoint below. They are re-declared in
+`CasesTab.tsx`, `caseDetails.ts`, and `tickets.ts`. The server should
+treat them as the canonical set of values; the client hardcodes display
+labels and colors.
+
+```ts
+// Severity — derived client-side from `sla.deadlineMs - now`. The server
+// may include the seed value in the response for hydration only; the
+// client re-derives on every 1-second tick.
+type Severity = 'ok' | 'risk' | 'breach';
+
+// Timeline event kind — drives the dot color and icon in the timeline.
+type TimelineEventKind = 'system' | 'customer' | 'agent' | 'note';
+
+// Channel — also used by the Overview / Queue tabs.
+type Channel = 'email' | 'chat' | 'portal' | 'social' | 'phone';
+
+// Priority — also used by the Overview / Queue tabs.
+type PriorityKey = 'p1' | 'p2' | 'p3' | 'p4';
+
+// Queue — case-category taxonomy (the literal 'all' is filter-only and
+// never appears in ticket records).
+type QueueKey = 'all' | 'Billing' | 'Platform' | 'Account' | 'General';
+
+// Chip tone — the client maps this to a CSS class (e-success / e-warning
+// / e-danger / e-info / e-secondary). Unknown values fall through to
+// 'e-secondary' (neutral).
+type ChipTone = 'success' | 'warning' | 'error' | 'info' | 'neutral';
+
+// Toast severity — drives the toast surface's color band.
+type ToastSeverity = 'Success' | 'Info' | 'Warning' | 'Error';
+
+// Assignee — the discriminator `kind` lets the server express both an
+// agent and an unassigned ticket without nullable fields.
+type AssigneeRef =
+  | { kind: 'agent'; initials: string; name: string }
+  | { kind: 'unassigned' };
+```
+
+---
+
+## 1. Case detail (the main record)
+
+### Source in client
+`CasesTab.tsx` — `generateCaseDetail(resolvedCaseId)` returns a
+`CaseDetail` object built from the queue seed. Every panel on the page
+(priority / metadata header, customer profile card, timeline, SLA
+timers, agent assignment, internal notes, related cases, and the case
+selector) is fed from this single record.
+
+`CasesTabProps.caseId` is the URL-hash id (e.g. `CS-10478`); the
+component strips the leading `#` before matching against the seed. If
+`caseId` is missing, the client falls back to `defaultP1Case().id` (the
+latest open P1 case from the queue seed). The server should accept the
+same fallback by accepting `?id=` and resolving a default when the
+parameter is absent.
+
+### Endpoint
+
+`GET /api/cases/{id}`
+
+#### Path parameters
+
+| Param | Type   | Required | Notes                                              |
+| ----- | ------ | -------- | -------------------------------------------------- |
+| `id`  | string | yes      | The case id without the leading `#` (e.g. `CS-10478`). |
+
+#### Query parameters
+
+None. The case id is the only input. Filter pipelines from other tabs
+do not flow through this endpoint.
+
+#### Response
+
+```ts
+{
+  id: string;                                   // e.g. "CS-10478" (no leading '#')
+  title: string;                                // h1, e.g. "SSO loop on IdP callback"
+  subtitle: string;                             // subhead under h1
+  priority: PriorityKey;                        // drives the dot color
+  priorityLabel: string;                        // e.g. "P1 Critical"
+  category: string;                             // e.g. "Platform > SSO"
+  status: 'open' | 'pending' | 'resolved' | 'closed';
+  opened: string;                               // human label, e.g. "Mar 14, 09:22"
+  channel: string;                              // e.g. "Email"; rendered verbatim
+  customer: {
+    name: string;                               // e.g. "Mira Patel"
+    initials: string;                           // e.g. "MP" — 2 chars
+    email: string;
+    phone: string;
+    accountId: string;                          // e.g. "ACME-7821"
+    plan: string;                               // chip label, e.g. "Enterprise"
+    csat: string;                               // chip label, e.g. "CSAT 4.8"
+    since: string;                              // chip label, e.g. "Customer since 2021"
+    successManager: string;                     // e.g. "Jasmine W."
+    lastContact: string;                        // e.g. "2d ago"
+    openCases: number;                          // e.g. 3
+  };
+  agent: {
+    name: string;
+    initials: string;
+    tier: string;                               // e.g. "Tier 2"
+    role: string;                               // e.g. "Billing · 6h shift"
+  };
+  slas: Array<{
+    label: string;                              // e.g. "First response"
+    deadlineMs: number;                         // Unix epoch ms — drives the live timer
+    tag: string;                                // chip label, e.g. "On track"
+    tagTone: ChipTone;                          // drives the chip color
+  }>;
+  slaPolicy: {
+    name: string;                               // e.g. "Enterprise — 24×7"
+    badge: string;                              // chip label, e.g. "24×7"
+    badgeTone: ChipTone;                        // typically 'info'
+  };
+  timeline: Array<{
+    kind: TimelineEventKind;                    // drives dot color + icon
+    author: string;                             // e.g. "Mira Patel", "System", "Daniel K."
+    time: string;                               // human label, e.g. "09:24"
+    body: string;                               // the event description (plain text)
+    chips?: Array<{ label: string; tone: ChipTone }>;   // optional tag chips
+    attachment?: { name: string; tone: ChipTone };      // optional single attachment chip
+  }>;
+  internalNotes: Array<{
+    initials: string;
+    name: string;
+    role: string;                               // e.g. "Tier 2 · Billing"
+    time: string;                               // human label
+    body: string;
+    chips?: Array<{ label: string; tone: ChipTone }>;
+  }>;
+  relatedCases: Array<{
+    id: string;                                 // e.g. "CS-10475"
+    priority: PriorityKey;
+    title: string;                              // e.g. "Refund not received · Stripe"
+    sub: string;                                // subline, e.g. "Opened 22m ago · Billing"
+  }>;
+}
+```
+
+#### Notes
+
+- The SLA cell template (`SlaTimerDisplay`) re-derives `severity` and a
+  live countdown label on every 1-second tick using the local wall
+  clock. The server does **not** need to return a `severity` field —
+  the client computes it from `deadlineMs - Date.now()`. (If the
+  server wants to provide a seed for SSR hydration, the field is
+  tolerated but ignored after the first tick.)
+- `deadlineMs` is the source of truth. A long-running tab does not
+  need to refresh the row to update the countdown.
+- `timeline[].chips` and `timeline[].attachment` are both optional.
+  When the event has no tags, the chips row is omitted. When there is
+  no attachment, the attachment row is omitted.
+- `internalNotes[].chips` follow the same rule.
+- `relatedCases` powers both the right-sidebar list and the
+  "Related cases" sub-tab. The same array is passed to both, so
+  `id` collisions are not possible. The client formats the deep link
+  as `${origin}${pathname}#/cases?id={id}` — the server should
+  return ids that are stable across refreshes.
+- The response object is the single source of truth for the page.
+  The client does **not** call any other GET to populate panels.
+
+---
+
+## 2. Case selector dropdown
+
+### Source in client
+`CasesTab.tsx` — `caseSelectorOptions`, populated by
+`allCaseIds().map(id => ({ value: id, text: id }))`. The dropdown is a
+Syncfusion `DropDownListComponent` rendered next to the page's action
+buttons. Selecting a value navigates the URL hash to
+`#/cases?id={value}`, which triggers a re-fetch of the case detail
+(§1) and a re-render.
+
+### Endpoint
+
+`GET /api/cases`
+
+#### Query parameters
+
+| Param   | Type                          | Required | Default | Notes                                                  |
+| ------- | ----------------------------- | -------- | ------- | ------------------------------------------------------ |
+| `status`| `'open' \| 'pending' \| 'resolved' \| 'closed' \| 'all'` | no | `open` | Filter by case status. `all` returns every status.     |
+| `limit` | `number`                      | no       | `50`    | Max number of ids to return.                           |
+| `cursor`| `string`                      | no       | -       | Opaque pagination cursor; pass back the `nextCursor` from a prior response. |
+
+#### Response
+
+```ts
+{
+  items: Array<{
+    id: string;                                // e.g. "CS-10478" (no leading '#')
+    title: string;                             // for tooltip / accessibility
+    status: 'open' | 'pending' | 'resolved' | 'closed';
+    priority: PriorityKey;                     // for sorting / color hint
+  }>;
+  nextCursor?: string;                         // present if more results are available
+}
+```
+
+#### Notes
+
+- The current client implementation orders the list as-is from the
+  seed. A real backend should return the list sorted by `priority`
+  ascending (P1 first) then by `opened` descending (newest first).
+- The dropdown is currently non-searchable. A future change could add
+  a `q` parameter and enable the Syncfusion `filtering` /
+  `allowFiltering` props; the contract anticipates that by returning
+  a small `items` array (~50 entries) that fits in a single page.
+- The list is the only way an agent can navigate between cases from
+  inside the tab. The server should ensure every open case is
+  reachable from this endpoint.
+
+---
+
+## 3. Default case id (when the URL hash has no `?id=`)
+
+### Source in client
+`CasesTab.tsx` — `defaultP1Case().id` is called when `caseId` is
+absent. The current implementation picks the first open P1 case from
+the seed list. The server should return the same default so a deep
+link like `/#/cases` still lands on the most urgent open case.
+
+### Endpoint
+
+`GET /api/cases/default`
+
+#### Query parameters
+
+None.
+
+#### Response
+
+```ts
+{
+  id: string;                                  // e.g. "CS-10478"
+}
+```
+
+#### Notes
+
+- The server should pick the highest-priority open case, breaking ties
+  by oldest first (closest to SLA breach). If no P1 cases are open, it
+  should fall back to the highest-priority open case of any priority.
+- The endpoint exists so the client does not need to fetch the full
+  case list (§2) just to find a default. It also lets the server
+  apply policy-specific routing (e.g. always return the case owned by
+  the current user, if auth is added in the future).
+- The client treats the `id` as a plain string and immediately calls
+  the §1 endpoint to load the full detail. The response shape is
+  deliberately minimal.
+
+---
+
+## 4. Reply composer (RTE value)
+
+### Source in client
+`CasesTab.tsx` — `replyText` state, a plain `string` holding the
+RichTextEditorComponent's HTML value. The RTE fires `change` events
+on every user modification; the handler stores the HTML in
+`replyText` and mirrors it to `replyRef` so the "Send reply" button
+never reads a stale closure.
+
+The composer itself is **client-side only**. There is no server-side
+endpoint that returns the editor's content; the user types it from
+scratch. The only write endpoint is the "Send reply" mutation (§5.1).
+
+### Notes
+
+- The RTE ships with its own toolbar (Bold, Italic, Underline,
+  StrikeThrough, Formats, Alignments, Ordered/UnorderedList,
+  Outdent/Indent, CreateLink, Image, ClearFormat, SourceCode,
+  Undo, Redo) — the server does not need to provide toolbar
+  configuration.
+- `enableHtmlSanitizer` is on by default in the client. The server
+  should still treat the submitted HTML as untrusted and sanitize it
+  on the way in.
+- `maxLength` is set to 5000 (character count). The server should
+  reject payloads longer than the configured cap.
+
+---
+
+## 5. Mutations (Resolve / Escalate / Reassign / Send reply / Add note / Attach)
+
+The Cases tab has six write paths. The current implementation only
+pushes toasts on success — there are no real write endpoints. The
+list below documents the contracts those endpoints should satisfy.
+
+### 5.1 Resolve case
+
+Triggered from the "Resolve" button in the page header, which opens
+the `resolve` confirmation dialog. The dialog's primary button calls
+`handleResolve`, which currently just toasts.
+
+`POST /api/cases/{id}/resolve`
+
+#### Request
+
+```ts
+{
+  resolutionNote?: string;                     // optional operator note
+  sendNotification?: boolean;                  // default true; whether to email the customer
+}
+```
+
+#### Response
+
+```ts
+{
+  caseId: string;
+  resolvedAt: string;                          // ISO-8601
+  resolvedBy: { initials: string; name: string };
+}
+```
+
+#### Notes
+
+- The dialog currently has no note input. The contract anticipates
+  a future change that adds a note textarea.
+- On success, the client toasts `Case {id} has been resolved.` The
+  server may return additional fields the client ignores.
+
+### 5.2 Escalate case
+
+Triggered from the "Escalate" button in the page header, which opens
+the `escalate` confirmation dialog.
+
+`POST /api/cases/{id}/escalate`
+
+#### Request
+
+```ts
+{
+  targetTier: 'tier2' | 'tier3';               // the target escalation tier
+  reason?: string;                             // optional operator note
+}
+```
+
+#### Response
+
+```ts
+{
+  caseId: string;
+  escalatedAt: string;                         // ISO-8601
+  newAssignee: { initials: string; name: string };
+  targetTier: 'tier2' | 'tier3';
+}
+```
+
+#### Notes
+
+- The dialog currently has no tier selector. The contract anticipates
+  a future change that adds one. For now the server may assume
+  `targetTier: 'tier3'`.
+- On success, the client toasts `Case {id} escalated to Tier 3
+  Engineering.` The server's response message may differ.
+
+### 5.3 Reassign case
+
+Triggered from the "Reassign" button in the right-sidebar Assignment
+panel, which opens the `reassign` confirmation dialog.
+
+`POST /api/cases/{id}/reassign`
+
+#### Request
+
+```ts
+{
+  targetAgentId: string;                       // agent id (matches the §6 list)
+  note?: string;                               // optional operator note
+}
+```
+
+#### Response
+
+```ts
+{
+  caseId: string;
+  newAssignee: { initials: string; name: string };
+  reassignedAt: string;                        // ISO-8601
+}
+```
+
+#### Notes
+
+- The dialog currently has no agent picker. The contract anticipates
+  a future change that adds one. For now the server may default to
+  the agent id `sarah`.
+- On success, the client toasts `Case {id} reassigned to Sarah L.`
+  (the name is hardcoded; a future change should derive it from the
+  response).
+- The endpoint is distinct from the Overview tab's
+  `POST /api/overview/tickets/{ticketId}/reassign` (§9.2 of
+  `overview.txt`); the Cases tab operates on the case id, not the
+  ticket id, and the response shape is different (no `intent` field,
+  always `reassign`).
+
+### 5.4 Send reply
+
+Triggered from the "Send reply" button under the reply composer.
+
+`POST /api/cases/{id}/replies`
+
+#### Request
+
+```ts
+{
+  bodyHtml: string;                            // the RTE's HTML value
+  isInternal?: boolean;                        // default false; when true, the reply is an internal note
+}
+```
+
+#### Response
+
+```ts
+{
+  caseId: string;
+  replyId: string;
+  sentAt: string;                              // ISO-8601
+  author: { initials: string; name: string };
+}
+```
+
+#### Notes
+
+- The client strips tags and collapses whitespace before the
+  empty-check so a payload of just `<p><br></p>` does not sneak
+  through as a "sent" reply. The server should apply the same
+  empty-check.
+- The RTE's `maxLength` is 5000 characters. The server should reject
+  payloads longer than that.
+- On success, the client clears the editor and toasts
+  `Reply sent to {customer.name}.`
+
+### 5.5 Add internal note (the sub-tab "Add note" button)
+
+The "Internal notes" sub-tab renders the existing notes array from
+`caseData.internalNotes` (§1). A future change could add a
+`"+ Add note"` button that opens a small composer. The endpoint
+contract anticipates that:
+
+`POST /api/cases/{id}/notes`
+
+#### Request
+
+```ts
+{
+  bodyHtml: string;                            // the note's HTML (RTE or textarea)
+  visibility?: 'internal' | 'public';          // default 'internal'
+}
+```
+
+#### Response
+
+```ts
+{
+  caseId: string;
+  noteId: string;
+  at: string;                                  // ISO-8601
+  author: { initials: string; name: string };
+}
+```
+
+#### Notes
+
+- The current mock implementation does not expose a note composer
+  inside the Cases tab. The endpoint contract mirrors the Overview
+  tab's §9.4 (`POST /api/overview/tickets/{ticketId}/notes`) so a
+  single backend handler can serve both.
+
+### 5.6 Attachment upload (the Uploader in the composer footer)
+
+Triggered from the Syncfusion `UploaderComponent` rendered inline
+below the RTE. Each picked file is POSTed to `saveUrl` as
+`multipart/form-data`. The client does **not** call a separate
+endpoint after the upload completes — the Uploader manages the file
+list itself.
+
+`POST /api/cases/{id}/attachments` (the path is configured as
+`asyncSettings.saveUrl` on the Uploader; a same-origin stub currently
+returns `200 OK` for the demo).
+
+#### Request
+
+`multipart/form-data` with the file under the `file` field name. The
+case id is in the path; the Uploader forwards the file blob.
+
+#### Response
+
+```ts
+{
+  caseId: string;
+  attachmentId: string;
+  name: string;                                // echo of the uploaded file name
+  size: number;                                // bytes
+  contentType: string;                         // MIME type
+  uploadedAt: string;                          // ISO-8601
+  uploadedBy: { initials: string; name: string };
+}
+```
+
+#### Notes
+
+- The Uploader posts a separate request per file. The server should
+  return a 2xx with the JSON body above for each.
+- The Uploader's `success` / `failure` events fire on the
+  corresponding server response; the client surfaces a toast for
+  each ("{name} uploaded successfully." / "Could not upload {name}.").
+- Allowed extensions (from the client): `.png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.log,.csv,.json,.zip`. Max file size: `25 * 1024 * 1024` (25 MB). The server should enforce the same limits.
+- The corresponding `removeUrl` (`POST /api/cases/{id}/attachments/{attachmentId}/remove`)
+  is wired by the Uploader for the "x" button on each uploaded file.
+  The server should return `204 No Content` on success.
+
+---
+
+## 6. Agent directory (for the future Reassign picker)
+
+### Source in client
+None today. The "Reassign" dialog has no picker. The contract
+anticipates a future change that adds one — mirroring the Overview
+tab's `filter-options` `agents` list (`{ id, label }[]`).
+
+### Endpoint
+
+`GET /api/cases/agents`
+
+#### Query parameters
+
+| Param        | Type     | Required | Default | Notes                                              |
+| ------------ | -------- | -------- | ------- | -------------------------------------------------- |
+| `tier`       | string   | no       | -       | Filter by tier (e.g. `tier2`, `tier3`).            |
+| `availableOnly` | `'true' \| 'false'` | no | `false` | When `true`, exclude agents at full capacity.  |
+| `limit`      | number   | no       | `50`    | Max number of agents to return.                     |
+| `cursor`     | string   | no       | -       | Opaque pagination cursor.                           |
+
+#### Response
+
+```ts
+{
+  items: Array<{
+    id: string;                                // e.g. "sarah"
+    initials: string;                          // e.g. "SL"
+    name: string;                              // e.g. "Sarah L."
+    tier: string;                              // e.g. "Tier 2"
+    role: string;                              // e.g. "Billing"
+    openCount: number;                         // current open-case count
+    cap: number;                               // max open cases
+  }>;
+  nextCursor?: string;
+}
+```
+
+#### Notes
+
+- The list should always include a synthetic `auto` option
+  (`{ id: 'auto', label: 'Auto-balance by load' }`) as the first
+  entry, matching the Overview tab's contract. A future change could
+  pre-select it in the dialog.
+- The endpoint mirrors the Overview tab's `GET /api/overview/workload`
+  filtered to a single agent's `id`. A shared backend handler is
+  acceptable; the response shape is the same.
+
+---
+
+## 7. Toast surface
+
+### Source in client
+`CasesTab.tsx` — a single `ToastComponent` positioned bottom-right,
+`timeOut: 3500`, with a close button. Toasts are pushed by
+`showToast(message, severity)` from the action handlers.
+
+The toast surface itself is purely client-side — every action that
+succeeds (e.g. "Case CS-10478 has been resolved.") is fired locally.
+The server does not need to return toast payloads; it only needs to
+return success/failure for the mutation endpoints above.
+
+For a future cross-tab or push-notification use case, the server could
+expose a `GET /api/cases/notifications` endpoint that returns the same
+shape as the Overview tab's notifications list:
+
+```ts
+{
+  id: string;
+  title?: string;
+  content: string;
+  severity: ToastSeverity;
+}
+```
+
+---
+
+## 8. Endpoint summary
+
+| #   | Method | Path                                                | Purpose                                            |
+| --- | ------ | --------------------------------------------------- | -------------------------------------------------- |
+| 1   | GET    | `/api/cases/{id}`                                   | Full case-detail record (single page)              |
+| 2   | GET    | `/api/cases`                                        | Case selector dropdown (id + title + status)       |
+| 3   | GET    | `/api/cases/default`                                | Default case id (highest-priority open)            |
+| 4   | -      | (client-side)                                       | RTE value (no GET; user types from scratch)        |
+| 5.1 | POST   | `/api/cases/{id}/resolve`                           | Resolve case                                       |
+| 5.2 | POST   | `/api/cases/{id}/escalate`                          | Escalate to a target tier                          |
+| 5.3 | POST   | `/api/cases/{id}/reassign`                          | Reassign to another agent                          |
+| 5.4 | POST   | `/api/cases/{id}/replies`                           | Send reply (or internal note)                      |
+| 5.5 | POST   | `/api/cases/{id}/notes`                             | Add internal note (sub-tab)                        |
+| 5.6 | POST   | `/api/cases/{id}/attachments`                       | Upload attachment (Uploader `saveUrl`)             |
+| 5.6b| POST   | `/api/cases/{id}/attachments/{attachmentId}/remove` | Remove attachment (Uploader `removeUrl`)           |
+| 6   | GET    | `/api/cases/agents`                                 | Agent directory (for future Reassign picker)       |
+
+### Caching & freshness notes
+
+- The case-detail endpoint (`/api/cases/{id}`) should set
+  `Cache-Control: no-cache` — the page is the source of truth for
+  SLA countdowns and operator actions.
+- The case-list endpoint (`/api/cases`) may be cached for
+  `max-age=30` since the dropdown is a navigation aid, not a live
+  feed.
+- The default-case-id endpoint (`/api/cases/default`) should set
+  `Cache-Control: no-cache` — the "most urgent open case" can change
+  at any moment.
+- All POST endpoints are write-through; the client should re-issue
+  the case-detail GET (§1) on success so the panels reflect the
+  mutation.
+
+---
+
+## 9. Property checklist (no missing / conflicting fields)
+
+This section is a flat list of every property the client reads from
+the response of every endpoint above. When swapping the mock data for
+a live endpoint, the server response must cover **every** property
+listed here — omitting one will silently render an empty panel.
+
+### §1 Case detail
+- `id`, `title`, `subtitle`, `priority`, `priorityLabel`, `category`,
+  `status`, `opened`, `channel`
+- `customer.name`, `customer.initials`, `customer.email`,
+  `customer.phone`, `customer.accountId`, `customer.plan`,
+  `customer.csat`, `customer.since`, `customer.successManager`,
+  `customer.lastContact`, `customer.openCases`
+- `agent.name`, `agent.initials`, `agent.tier`, `agent.role`
+- `slas[].label`, `slas[].deadlineMs`, `slas[].tag`, `slas[].tagTone`
+- `slaPolicy.name`, `slaPolicy.badge`, `slaPolicy.badgeTone`
+- `timeline[].kind`, `timeline[].author`, `timeline[].time`,
+  `timeline[].body`, `timeline[].chips[]`, `timeline[].attachment`
+- `internalNotes[].initials`, `internalNotes[].name`,
+  `internalNotes[].role`, `internalNotes[].time`,
+  `internalNotes[].body`, `internalNotes[].chips[]`
+- `relatedCases[].id`, `relatedCases[].priority`,
+  `relatedCases[].title`, `relatedCases[].sub`
+
+### §2 Case selector
+- `items[].id`, `items[].title`, `items[].status`, `items[].priority`
+- `nextCursor` (optional, for future pagination)
+
+### §3 Default case id
+- `id`
+
+### §5.1 Resolve
+- Request: `resolutionNote?`, `sendNotification?`
+- Response: `caseId`, `resolvedAt`, `resolvedBy.initials`, `resolvedBy.name`
+
+### §5.2 Escalate
+- Request: `targetTier`, `reason?`
+- Response: `caseId`, `escalatedAt`, `newAssignee.initials`,
+  `newAssignee.name`, `targetTier`
+
+### §5.3 Reassign
+- Request: `targetAgentId`, `note?`
+- Response: `caseId`, `newAssignee.initials`, `newAssignee.name`,
+  `reassignedAt`
+
+### §5.4 Send reply
+- Request: `bodyHtml`, `isInternal?`
+- Response: `caseId`, `replyId`, `sentAt`, `author.initials`,
+  `author.name`
+
+### §5.5 Add internal note
+- Request: `bodyHtml`, `visibility?`
+- Response: `caseId`, `noteId`, `at`, `author.initials`, `author.name`
+
+### §5.6 Attachments
+- Request (upload): `file` (multipart), `id` (path)
+- Response: `caseId`, `attachmentId`, `name`, `size`, `contentType`,
+  `uploadedAt`, `uploadedBy.initials`, `uploadedBy.name`
+- Request (remove): `id` (path), `attachmentId` (path) — no body
+- Response: `204 No Content` (no JSON body)
+
+### §6 Agent directory
+- `items[].id`, `items[].initials`, `items[].name`, `items[].tier`,
+  `items[].role`, `items[].openCount`, `items[].cap`
+- `nextCursor` (optional)
+
+### §7 Notifications (optional, future)
+- `id`, `title?`, `content`, `severity`

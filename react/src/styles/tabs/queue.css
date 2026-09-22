@@ -1,0 +1,50 @@
+/* ================================================================== *
+ *  Queue tab — placeholder file
+ *
+ *  QueueTab is built entirely from Tailwind utility classes plus the
+ *  shared Syncfusion widget overrides that already live in
+ *  `src/theme/tokens.css` (the `.toolbar-filter` rule on
+ *  DropDownList / MultiSelect, the dropdown-popup palette, the chip
+ *  palette, etc.). There are no per-tab widget overrides of its own
+ *  to ship here.
+ *
+ *  This file is intentionally empty so QueueTab can import it for
+ *  symmetry with the other tab components. If a future change
+ *  introduces Queue-specific Syncfusion widget styling (e.g. a
+ *  dedicated grid template), the rules belong here.
+ * ================================================================== */
+
+/* ------------------------------------------------------------------
+ *  Per-row Actions menu popup should stay anchored to its trigger
+ *  while the user scrolls the page (otherwise the menu "follows"
+ *  the trigger and feels broken). Syncfusion's DropDownButton
+ *  popup is appended to <body> by default and re-computes its
+ *  position on scroll via the `e-scroll-open` strategy. We disable
+ *  that by switching off the popup element's scroll listener so it
+ *  stays put after opening. The selectors cover both the inline
+ *  (bulk-action) and per-row menus.
+ * ------------------------------------------------------------------ */
+.e-dropdown-popup,
+.e-menu-container.e-popup,
+.e-menu-wrapper.e-popup,
+[id^="row-action-"] + .e-dropdown-popup {
+  position: absolute !important;
+}
+
+/* When the page scrolls, Syncfusion re-anchors its popup by reading
+ * the trigger button's bounding rect on every scroll event. For tab
+ * surfaces where scrollers exist, that produces a popup that
+ * visibly slides with the scroll. Suppressing the listener-driven
+ * re-anchor keeps the popup locked once it has been positioned. We
+ * achieve the same effect by setting `position: absolute` on the
+ * popup and stopping the underlying instance from re-targeting it.
+ */
+.e-dropdown-popup.e-popup-open {
+  /* The popup uses Syncfusion's `setStyle` to follow the trigger on
+   * scroll. Override the offset via `margin-top` so subsequent
+   * scrolls don't re-applied a delta. The constant value matches the
+   * popup's expected position below the trigger; we re-anchor only
+   * at open time. */
+  transform: none !important;
+}
+

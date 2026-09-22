@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Acme Support - Customer Support & SLA</title>
+
+    <!-- Pre-hydration theme script: sets data-theme on <html> before React mounts
+         so the first paint uses the correct tokens. Syncfusion themes are
+         imported from main.tsx and toggled by [disabled] at runtime. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('css.theme');
+          var theme = stored === 'dark' || stored === 'light' ? stored : 'light';
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {
+          /* localStorage unavailable — fall back to defaults. */
+        }
+      })();
+    </script>
+
+    <script type="module" src="/src/main.tsx"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
